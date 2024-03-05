@@ -10,6 +10,7 @@ from nirdizati_light.encoding.constants import TaskGenerationType, PrefixLengthS
 from nirdizati_light.encoding.time_encoding import TimeEncodingType
 from nirdizati_light.evaluation.common import evaluate_classifier
 from nirdizati_light.explanation.common import ExplainerType, explain
+from nirdizati_light.explanation.wrappers.dice_impressed import model_discovery
 from nirdizati_light.pattern_discovery.common import discovery
 from nirdizati_light.hyperparameter_optimisation.common import retrieve_best_model, HyperoptTarget
 from nirdizati_light.labeling.common import LabelTypes
@@ -40,8 +41,7 @@ def dict_mean(dict_list):
 def run_simple_pipeline(CONF=None, dataset_name=None):
     random.seed(CONF['seed'])
     np.random.seed(CONF['seed'])
-    dataset = CONF['data'].rpartition('/')[0].replace('../datasets/','')
-    #dataset = CONF['data'].rpartition('/')[0].replace('cf4impressed/','')
+    dataset = CONF['data'].rpartition('/')[0].replace('datasets/','')
 
     dataset_confs = DatasetConfs(dataset_name=dataset, where_is_the_file=CONF['data'])
 
@@ -50,7 +50,6 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
     logger.debug('Update EVENT ATTRIBUTES')
 
     logger.debug('ENCODE DATA')
-   # CONF['feature_selection'] = encoding
     encoder, full_df = get_encoded_df(log=log, CONF=CONF)
 
     logger.debug('TRAIN PREDICTIVE MODEL')
@@ -98,8 +97,6 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
         actual = np.array(actual.to_list())
 
     initial_result = evaluate_classifier(actual, predicted, scores)
-
-    from nirdizati_light.explanation.wrappers.dice_wrapper import model_discovery
     model_path = '../experiments/process_models/process_models_new'
     logger.debug('COMPUTE EXPLANATION')
     if CONF['explanator'] is ExplainerType.DICE_IMPRESSED.value:
@@ -108,8 +105,6 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
         method = 'oneshot'
         optimization = 'genetic'
         diversity = 1.0
-        sparsity = diversity/2
-        proximity = diversity/2
         sparsity = 0.5
         proximity = 1.0
         timestamp = [*dataset_confs.timestamp_col.values()][0]
@@ -117,12 +112,12 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
         hit_rate = None
         dynamic_cols = [*dataset_confs.activity_col.values()] + [timestamp]
 
-        for x in range(len(test_df_correct.iloc[:15,:])):
+        for x in range(len(test_df_correct.iloc[:50,:])):
 
             query_instance = test_df_correct.iloc[x, :].to_frame().T
             case_id = query_instance.iloc[0, 0]
             query_instance = query_instance.drop(columns=['trace_id'])
-            output_path = '../results/simple_trace_encoding/'
+            output_path = 'results/simple_trace_results/'
             if not os.path.exists(output_path):
                 os.makedirs(output_path)
             discovery_path= output_path+'%s_discovery_%s_%s_%s' % (dataset, impressed_pipeline,CONF['seed'],case_id)
@@ -142,11 +137,11 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
             time_start = datetime.now()
             synth_log,x_eval,label_list = explain(CONF, predictive_model, encoder=encoder, cf_df=full_df.iloc[:, 1:],
                            query_instance=query_instance,
-                           method=method, df=full_df.iloc[:, 1:], optimization=optimization,
+                           method=method, optimization=optimization,
                            timestamp_col_name=timestamp,
                            model_path=model_path,random_seed=CONF['seed'],
                            neighborhood_size=neighborhood_size
-                    ,sparsity_weight=sparsity,case_id=case_id,
+                    ,sparsity_weight=sparsity,
                     diversity_weight=diversity,proximity_weight=proximity,features_to_vary=features_to_vary,impressed_pipeline=impressed_pipeline,
                                 dynamic_cols=dynamic_cols,timestamps=timestamps_query)
             time_cf = (datetime.now() - time_start).total_seconds()
@@ -169,10 +164,6 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                 discovery_algorithm = 'impressed'
                 pareto_only = True
                 time_start = datetime.now()
-                if 'BPIC17' in dataset:
-                    synth_log['case:label'].replace({ 'deviant':0, 'regular':1}, inplace=True)
-                else:
-                    synth_log['case:label'].replace({'false':0, 'true':1}, inplace=True)
 
                 train_X, test_X, test_ids = discovery(discovery_algorithm, synth_log, discovery_path, discovery_type, case_id_col, activity, timestamp, outcome,
                           outcome_type, delta_time,
@@ -300,12 +291,11 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                     glass_box.model, glass_box.config = retrieve_best_model(
                         glass_box,
                         DT_CONF['predictive_model'],
-                        max_evaluations=CONF[''],
+                        max_evaluations=CONF['hyperparameter_optimisation_epochs'],
                         target=DT_CONF['hyperparameter_optimisation_target'], seed=DT_CONF['seed']
                     )
 
                 if (local_fidelity > 0.9)  |  (global_fidelity > 0.8):
-
                     viz = dtreeviz.model(glass_box.model,
                                          drop_columns(update_train_X),
                                          update_train_X['label'],
@@ -342,11 +332,6 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                 synth_df_trace = enc_ohe.transform(synth_df_trace)
 
                 frequency_encoder.decode(synth_df)
-                if 'BPIC17' in dataset:
-                    synth_df['label'].replace({'deviant': 0, 'regular': 1}, inplace=True)
-                else:
-                    synth_df['label'].replace({'false': 0, 'true': 1}, inplace=True)
-
                 synth_df_subset = synth_df_trace.drop(columns=[col for col in synth_df_trace.columns if 'prefix' in col]+['label'])
                 synth_df = pd.merge(synth_df_subset, synth_df, on='trace_id', how='left')
 
@@ -435,6 +420,8 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                 results['pareto_only'] = False
             results['extension_step'] = max_extension_step
             results['seed'] = CONF['seed']
+            res_df = pd.DataFrame(results, index=[0])
+
             if not os.path.isfile(output_path + '%s_results_impressed.csv' % (dataset)):
                 res_df.to_csv(output_path + '%s_results_impressed.csv' % (dataset), index=False)
             else:
@@ -472,37 +459,39 @@ if __name__ == '__main__':
        'BPIC17_O_REFUSED':[15,20,25,30],
 
     }
+    pipelines = [True,False]
     for dataset, prefix_lengths in dataset_list.items():
         for prefix_length in prefix_lengths:
-            if 'bpic2012' in dataset:
-                seed = 48
-            elif 'sepsis' in dataset:
-                seed = 56
-            else:
-                seed = 48
-            print(os.path.join('..','datasets',dataset, 'full.xes'))
-            CONF = {
-                'data': os.path.join('..','datasets',dataset, 'full.xes'),
-                'train_val_test_split': [0.7, 0.15, 0.15],
-                'output': os.path.join('..', 'output_data'),
-                'prefix_length_strategy': PrefixLengthStrategy.FIXED.value,
-                'prefix_length': prefix_length,
-                'padding': True,  # TODO, why use of padding?
-                'feature_selection': EncodingType.SIMPLE_TRACE.value,
-                'task_generation_type': TaskGenerationType.ONLY_THIS.value,
-                'attribute_encoding': EncodingTypeAttribute.LABEL.value,  # LABEL, ONEHOT
-                'labeling_type': LabelTypes.ATTRIBUTE_STRING.value,
-                'predictive_model': ClassificationMethods.XGBOOST.value,  # RANDOM_FOREST, LSTM, PERCEPTRON
-                'explanator': ExplainerType.DICE_IMPRESSED.value,  # SHAP, LRP, ICE, DICE
-                'threshold': 13,
-                'top_k': 10,
-                'hyperparameter_optimisation': True,  # TODO, this parameter is not used
-                'hyperparameter_optimisation_target': HyperoptTarget.AUC.value,
-                'hyperparameter_optimisation_epochs': 20,
-                'time_encoding': TimeEncodingType.NONE.value,
-                'target_event': None,
-                'seed': seed,
-                'impressed_pipeline': True,
-            }
+            for pipeline in pipelines:
+                if 'bpic2012' in dataset:
+                    seed = 48
+                elif 'sepsis' in dataset:
+                    seed = 56
+                else:
+                    seed = 48
+                print(os.path.join('datasets',dataset, 'full.xes'))
+                CONF = {
+                    'data': os.path.join('datasets',dataset, 'full.xes'),
+                    'train_val_test_split': [0.7, 0.15, 0.15],
+                    'output': os.path.join('..', 'output_data'),
+                    'prefix_length_strategy': PrefixLengthStrategy.FIXED.value,
+                    'prefix_length': prefix_length,
+                    'padding': True,  # TODO, why use of padding?
+                    'feature_selection': EncodingType.SIMPLE_TRACE.value,
+                    'task_generation_type': TaskGenerationType.ONLY_THIS.value,
+                    'attribute_encoding': EncodingTypeAttribute.LABEL.value,  # LABEL, ONEHOT
+                    'labeling_type': LabelTypes.ATTRIBUTE_STRING.value,
+                    'predictive_model': ClassificationMethods.XGBOOST.value,  # RANDOM_FOREST, LSTM, PERCEPTRON
+                    'explanator': ExplainerType.DICE_IMPRESSED.value,  # SHAP, LRP, ICE, DICE
+                    'threshold': 13,
+                    'top_k': 10,
+                    'hyperparameter_optimisation': True,  # TODO, this parameter is not used
+                    'hyperparameter_optimisation_target': HyperoptTarget.AUC.value,
+                    'hyperparameter_optimisation_epochs': 20,
+                    'time_encoding': TimeEncodingType.NONE.value,
+                    'target_event': None,
+                    'seed': seed,
+                    'impressed_pipeline': pipeline,
+                }
 
-            run_simple_pipeline(CONF=CONF, dataset_name=dataset)
+                run_simple_pipeline(CONF=CONF, dataset_name=dataset)

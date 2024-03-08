@@ -45,7 +45,7 @@ def dice_impressed(CONF, predictive_model, cf_df, encoder, query_instance, metho
         m = dice_model(predictive_model)
         dice_query_instance = dice_ml.Dice(d, m, encoder=encoder, method=optimization)
     time_train = (datetime.now() - time_start).total_seconds()
-    model_path = model_path +'_' + str(support) + '/'
+    model_path = model_path + '/'
 
     try:
         if not os.path.exists(model_path):

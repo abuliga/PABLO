@@ -97,7 +97,7 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
         actual = np.array(actual.to_list())
 
     initial_result = evaluate_classifier(actual, predicted, scores)
-    model_path = '../experiments/process_models/process_models_new'
+    model_path = 'results/process_models'
     logger.debug('COMPUTE EXPLANATION')
     if CONF['explanator'] is ExplainerType.DICE_IMPRESSED.value:
         impressed_pipeline = CONF['impressed_pipeline']

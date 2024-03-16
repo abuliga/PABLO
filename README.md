@@ -6,7 +6,7 @@ using the PABLO framework introduced in the paper.
 
 
 # Usage
-To rerun the experiments presented in the paper, we first need to extrac the datasets archive file found in the repository.
+To rerun the experiments presented in the paper, we first need to download and unzip the datasets archive file found at this link:https://drive.google.com/file/d/1Jr4RM4dRlbi-aXAxNaifRVGLDOnhlIdN/view?usp=sharing.
 Afterwards, a Conda/virtualenv environment has to be setup, then the requirements can be installed by opening a Terminal instance,
 going to the PABLO folder and running following command: ```pip install -e .```
 

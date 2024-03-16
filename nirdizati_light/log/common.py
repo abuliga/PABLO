@@ -16,6 +16,7 @@ def import_log_csv(path):
 def get_log(filepath):
     """Read in event log from disk
     Uses xes_importer to parse log.
+    Outputs event log in pm4py format.
     """
     logger.info("\t\tReading in log from {}".format(filepath))
     # uses the xes, or csv importer depending on file type

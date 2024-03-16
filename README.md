@@ -7,6 +7,7 @@ using the PABLO framework introduced in the paper.
 
 # Usage
 To rerun the experiments presented in the paper, we first need to download and unzip the datasets archive file found at this link:https://drive.google.com/file/d/1Jr4RM4dRlbi-aXAxNaifRVGLDOnhlIdN/view?usp=sharing.
+Make sure that the datasets are placed within the project PABLO folder.
 Afterwards, a Conda/virtualenv environment has to be setup, then the requirements can be installed by opening a Terminal instance,
 going to the PABLO folder and running following command: ```pip install -e .```
 
@@ -66,3 +67,4 @@ found at the end of each script file:
 ```
 The CONF file also allows one to the different predictive models, found in the code, along with different seeds
 for the random number generators. The pipeline argument specifies whether the PABLO method is used, or the baseline method.
+The results are saved in the results folder, that is created at runtime when running the scripts.

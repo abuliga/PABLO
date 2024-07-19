@@ -377,7 +377,7 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                       'time_alignment',time_alignment,'neighborhood_size',neighborhood_size,'number_of_patterns')
 if __name__ == '__main__':
     dataset_list = {
-        'bpic2012_O_ACCEPTED-COMPLETE':[20,25,30,35],
+        'synthetic_data':[3,5,7,9],
         'bpic2012_O_CANCELLED-COMPLETE':[20,25,30,35],
         'bpic2012_O_DECLINED-COMPLETE':[20,25,30,35],
          'sepsis_cases_1':[5,9,13,16],

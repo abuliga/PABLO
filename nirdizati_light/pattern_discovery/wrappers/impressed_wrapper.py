@@ -1,6 +1,6 @@
 import argparse
 import pickle
-from nirdizati_light.pattern_discovery.utils.Alignment_Check import alignment_check,Alignment_Checker
+from nirdizati_light.pattern_discovery.utils.Alignment_Check import Alignment_Checker
 from joblib import Parallel, delayed
 import random
 import os
@@ -11,7 +11,7 @@ import pm4py
 from paretoset import paretoset
 from pm4py.algo.filtering.log.variants import variants_filter
 from pm4py.objects.log.obj import EventLog
-from nirdizati_light.pattern_discovery.utils.Auto_IMPID import AutoStepWise_PPD
+from nirdizati_light.pattern_discovery.utils.Auto_IMPID import AutoPatternDetection
 from nirdizati_light.pattern_discovery.utils.IMIPD import VariantSelection, create_pattern_attributes, Trace_graph_generator, Pattern_extension,\
     plot_only_pattern, Single_Pattern_Extender
 from sklearn.model_selection import train_test_split
@@ -19,16 +19,35 @@ import itertools
 
 
 def impressed_wrapper(df,output_path,discovery_type,case_id,activity,timestamp,outcome,outcome_type,delta_time,
-                      max_gap,max_extension_step,factual_outcome,likelihood,encoding,testing_percentage,pareto_only):
+                      max_gap,max_extension_step,factual_outcome,likelihood,encoding,testing_percentage,extension_style,data_dependency,
+    model,pattern_extension_strategy,aggregation_style,frequency_type, distance_style):
     # Load the log
     if not os.path.exists(output_path):
         os.makedirs(output_path)
-    pareto_features = ['Outcome_Interest', 'Frequency_Interest', 'likelihood']
-    pareto_sense = ['max', 'max', 'max']
-    df = df[[case_id, activity, timestamp, outcome, likelihood]]
+
+    Log_graph_address = "/".join(output_path.split("/")[:-1]) + '/EventLogGraph.pickle'
+    if os.path.exists(Log_graph_address):
+        EventLog_graphs = pickle.load(open(Log_graph_address, "rb"))
+        log_graph_exist = True
+        print("Event log graph loaded successfully.")
+    else:
+        log_graph_exist = False
+        EventLog_graphs = dict()
+    pareto_features = ['Outcome_Interest', 'Frequency_Interest', 'likelihood', 'Case_Distance_Interest']
+    pareto_sense = ['max', 'max', 'max', 'min']
     df[activity] = df[activity].astype('string')
-    df[activity] = df[activity].str.replace("_", "-")
-    df[timestamp] = pd.to_datetime(df[timestamp],format='mixed')
+    df[activity] = df[activity].str.replace("_", "")
+    df[activity] = df[activity].str.replace("-", "")
+    df.columns = df.columns.str.replace("_", "")
+    df.columns = df.columns.str.replace("-", "")
+    df.columns = df.columns.str.replace(" ", "")
+    timestamp = timestamp.replace("_", "")
+    timestamp = timestamp.replace("-", "")
+    timestamp = timestamp.replace(" ", "")
+    try:
+        df[timestamp] = pd.to_datetime(df[timestamp])
+    except:
+        print('The timestamp column is not in the correct format. Please convert it to datetime format.')
     df[case_id] = df[case_id].astype('string')
     outcomes = df[outcome].unique()
     if outcome_type == 'binary':
@@ -38,22 +57,31 @@ def impressed_wrapper(df,output_path,discovery_type,case_id,activity,timestamp,o
     elif outcome_type == 'numerical':
         df[outcome] = df[outcome].astype('float32')
 
-    color_codes = ["#" + ''.join([random.choice('000123456789ABCDEF') for i in range(6)])
-                   for j in range(len(df[activity].unique()))]
+    color_dict_address = "/".join(output_path.split("/")[:-1]) + '/color_dict.pickle'
+    if os.path.exists(color_dict_address):
+        color_act_dict = pickle.load(open(color_dict_address, "rb"))
+    else:
+        color_codes = ["#" + ''.join([random.choice('000123456789ABCDEF') for i in range(6)])
+                       for j in range(len(df[activity].unique()))]
 
-    color_act_dict = dict()
-    counter = 0
-    for act in df[activity].unique():
-        color_act_dict[act] = color_codes[counter]
-        counter += 1
-    color_act_dict['start'] = 'k'
-    color_act_dict['end'] = 'k'
+        color_act_dict = dict()
+        counter = 0
+        for act in df[activity].unique():
+            color_act_dict[act] = color_codes[counter]
+            counter += 1
+        color_act_dict['start'] = 'k'
+        color_act_dict['end'] = 'k'
+        pickle.dump(color_act_dict, open(color_dict_address, "wb"))
 
     patient_data = df[[case_id, likelihood, outcome]]
     patient_data.drop_duplicates(subset=[case_id], inplace=True)
+    patient_data = patient_data.reset_index(drop=True)
     patient_data.loc[:, list(df[activity].unique())] = 0
     selected_variants = VariantSelection(df, case_id, activity, timestamp)
     for case in selected_variants["case:concept:name"].unique():
+        if not log_graph_exist:
+            EventLog_graphs[case] = Trace_graph_generator(df, delta_time, case, color_act_dict, case_id,
+                                                          activity, timestamp)
         Other_cases = \
             selected_variants.loc[selected_variants["case:concept:name"] == case, 'case:CaseIDs'].tolist()[0]
         trace = df.loc[df[case_id] == case, activity].tolist()
@@ -61,7 +89,13 @@ def impressed_wrapper(df,output_path,discovery_type,case_id,activity,timestamp,o
             Number_of_act = trace.count(act)
             for Ocase in Other_cases:
                 patient_data.loc[patient_data[case_id] == Ocase, act] = Number_of_act
+                if not log_graph_exist:
+                    EventLog_graphs[Ocase] = EventLog_graphs[case].copy()
 
+    # save the event log graph
+    if not log_graph_exist:
+        pickle.dump(EventLog_graphs, open(Log_graph_address, "wb"))
+        print("Event log graph created successfully.")
 
     if discovery_type == 'interactive':
         activity_attributes = create_pattern_attributes(patient_data, outcome, factual_outcome,
@@ -70,6 +104,7 @@ def impressed_wrapper(df,output_path,discovery_type,case_id,activity,timestamp,o
         Objectives_attributes = activity_attributes[pareto_features]
         mask = paretoset(Objectives_attributes, sense=pareto_sense)
         paretoset_activities = activity_attributes[mask]
+
         paretoset_activities.to_csv(output_path + '/paretoset_1.csv', index=False)
         All_pareto_patterns = paretoset_activities['patterns'].tolist()
 
@@ -94,11 +129,11 @@ def impressed_wrapper(df,output_path,discovery_type,case_id,activity,timestamp,o
                 Trace_graph = Trace_graph_generator(filtered_main_data, delta_time,
                                                     case, color_act_dict,
                                                     case_id, activity, timestamp)
-    
+
                 EventLog_graphs[case] = Trace_graph.copy()
             else:
                 Trace_graph = EventLog_graphs[case].copy()
-    
+
             Patterns_Dictionary = Pattern_extension(case_data, Trace_graph, Core_activity,
                                                     case_id, Patterns_Dictionary, max_gap)
 
@@ -109,21 +144,18 @@ def impressed_wrapper(df,output_path,discovery_type,case_id,activity,timestamp,o
     #         variant_frequency_case = Patterns_Dictionary[PID]['Instances']['case'].count(CaseID)
     #         patient_data.loc[patient_data[case_id] == CaseID, PID] = variant_frequency_case
 
-        Alignment_Check = Alignment_Checker(case_id)
+        Alignment_Check = Alignment_Checker(case_id, outcome)
         for pattern_name in list(Patterns_Dictionary.keys()):
             Pattern = Patterns_Dictionary[pattern_name]['pattern']
             patient_data[pattern_name] = 0
             patient_data = Alignment_Check.check_pattern_alignment(EventLog_graphs, patient_data, Pattern, pattern_name)
-    
+
         pattern_attributes = create_pattern_attributes(patient_data, outcome,
-                                                   factual_outcome, list(Patterns_Dictionary.keys()), outcome_type)
+                                                       factual_outcome, list(Patterns_Dictionary.keys()), outcome_type)
 
         Objectives_attributes = pattern_attributes[pareto_features]
         mask = paretoset(Objectives_attributes, sense=pareto_sense)
-        if pareto_only:
-            paretoset_patterns = pattern_attributes[mask]
-        else:
-            paretoset_patterns = pattern_attributes
+        paretoset_patterns = pattern_attributes[mask]
         all_pattern_dictionary.update(Patterns_Dictionary)
         All_pareto_patterns.extend(paretoset_patterns['patterns'].tolist())
         paretoset_patterns_to_save = paretoset_patterns.copy()
@@ -165,7 +197,7 @@ def impressed_wrapper(df,output_path,discovery_type,case_id,activity,timestamp,o
                 Core_pattern,
                 EventLog_graphs,
                 df, max_gap, activity, case_id)
-        
+
             for pattern_name in Patterns_Dictionary.keys():
                 Pattern = Patterns_Dictionary[pattern_name]['pattern']
                 patient_data[pattern_name] = 0
@@ -177,10 +209,8 @@ def impressed_wrapper(df,output_path,discovery_type,case_id,activity,timestamp,o
             Objectives_attributes = pattern_attributes[pareto_features]
             mask = paretoset(Objectives_attributes, sense=pareto_sense)
             paretoset_patterns = pattern_attributes
-            if pareto_only:
-                paretoset_patterns = pattern_attributes[mask]
-            else:
-                paretoset_patterns = pattern_attributes
+            paretoset_patterns = pattern_attributes[mask]
+            paretoset_patterns.to_csv(output_path + '/paretoset_%s.csv' % counter, index=False)
             for pattern in paretoset_patterns['patterns']:
                 P_graph = Patterns_Dictionary[pattern]['pattern']
                 pickle.dump(P_graph, open(output_path + '/%s_interactive.pickle' % pattern, "wb"))
@@ -220,15 +250,20 @@ def impressed_wrapper(df,output_path,discovery_type,case_id,activity,timestamp,o
             test_X = test
             test_ids = test_X.loc[:,case_id]
     if discovery_type == 'auto':
-        train_X, test_X,test_ids = AutoStepWise_PPD(max_extension_step, max_gap,
-                                           testing_percentage, df, patient_data, case_id,
-                                           activity, outcome, outcome_type, timestamp,
-                                           pareto_features, pareto_sense, delta_time,
-                                           color_act_dict, output_path,
-                                           factual_outcome,pareto_only)
-        
+        patient_data[case_id] = patient_data[case_id].astype('string')
+        df[case_id] = df[case_id].astype('string')
+        AutoDetection = AutoPatternDetection(EventLog_graphs, max_extension_step, max_gap,
+                                             testing_percentage, df, patient_data, case_id,
+                                             activity, outcome, outcome_type, timestamp,
+                                             pareto_features, pareto_sense, delta_time,
+                                             color_act_dict, output_path,
+                                             factual_outcome, extension_style, data_dependency, aggregation_style,
+                                             pattern_extension_strategy, model, frequency_type, distance_style)
+
+        train_X, test_X = AutoDetection.AutoStepWise_PPD()
+
     train_X.to_csv(output_path + "/training_encoded_log.csv", index=False)
     test_X.to_csv(output_path + "/testing_encoded_log.csv", index=False)
     #TODO: Add decision tree training here with rule extraction tomorrow
     #TODO: Plot the frequency curves for all generated patterns
-    return train_X,test_X,test_ids
+    return train_X,test_X

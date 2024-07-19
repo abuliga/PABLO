@@ -86,7 +86,7 @@ def calculate_pairwise_case_distance(X_features, num_col, Imput=False):
 
 
 def update_pattern_dict(Patterns_Dictionary, pattern, embedded_trace_graph,
-                        case_data, case_column, node_match, edge_match, core, new_patterns_for_core=None):
+                        case_data, case_column, node_match, edge_match, core, pattern_name = None, new_patterns_for_core=None):
     if new_patterns_for_core is None:
         new_patterns_for_core = list(Patterns_Dictionary.keys())
     discovered_patterns = list(Patterns_Dictionary.keys())
@@ -100,10 +100,15 @@ def update_pattern_dict(Patterns_Dictionary, pattern, embedded_trace_graph,
     else:
         if len(new_patterns_for_core) > 0:
             Pattern_IDs = max([int(s.split("_")[-1]) for s in new_patterns_for_core])
-            new_Pattern_IDs = core + "_" + str(Pattern_IDs + 1)
+            if pattern_name is not None:
+                new_Pattern_IDs = pattern_name + "_" + str(Pattern_IDs + 1)
+            else:
+                new_Pattern_IDs = core + "_" + str(Pattern_IDs + 1)
         else:
-            new_Pattern_IDs = core + "_1"
-
+            if pattern_name is not None:
+                new_Pattern_IDs = pattern_name + "_1"
+            else:
+                new_Pattern_IDs = core + "_1"
         Patterns_Dictionary[new_Pattern_IDs] = {'Instances': {'case': [case_data[case_column].unique()[0]],
                                                               'emb_trace': [embedded_trace_graph]},
                                                 'pattern': pattern}

@@ -139,7 +139,7 @@ class DatasetConfs:
                 self.filename = {dataset:''}
 
             self.case_id_col = {dataset: "Case ID"}
-            self.activity_col = {dataset: "Activity"}
+            self.activity_col = {dataset: "concept:name"}
             self.resource_col = {dataset: "Resource"}
             self.timestamp_col = {dataset: "Complete Timestamp"}
             self.label_col = {dataset: "label"}
@@ -147,7 +147,7 @@ class DatasetConfs:
             self.pos_label = {dataset: "deviant"}
 
             # features for classifier
-            self.dynamic_cat_cols = {dataset: ["Activity", "Resource","lifecycle:transition"]}
+            self.dynamic_cat_cols = {dataset: ["Resource", "lifecycle:transition"]}
             self.static_cat_cols = {dataset: []}
             self.dynamic_num_cols = {dataset: ["hour", "weekday", "month", "timesincemidnight", "timesincelastevent",
                                          "timesincecasestart", "event_nr", "open_cases"]}

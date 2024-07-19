@@ -15,7 +15,6 @@ from nirdizati_light.predictive_model.common import ClassificationMethods, get_t
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
-path_cf = '../experiments/cf4impressed/impressed_datasets/'
 single_prefix = ['loreley','loreley_complex']
 
 def dice_impressed(CONF, predictive_model, cf_df, encoder, query_instance, method, support,optimization,
@@ -81,6 +80,10 @@ def dice_impressed(CONF, predictive_model, cf_df, encoder, query_instance, metho
 
     else:
         predicted_outcome = predictive_model.model.predict(x.values.reshape(1, -1))[0]
+    filtered_cols = x.filter(like='prefix_').columns
+    # Step 2: Check if all values in these columns are zero
+    cols_0 = [col for col in filtered_cols if (x[col] == 0).all()]
+    feature_weights = {col: 2 for col in cols_0}
     total_traces = 0
     time_start_i = datetime.now()
 
@@ -134,9 +137,10 @@ def dice_impressed(CONF, predictive_model, cf_df, encoder, query_instance, metho
                                                                         total_CFs=k,
                                                                         dataset=dataset + '_' + str(
                                                                             CONF['prefix_length']),
-                                                                        #proximity_weight=proximity_weight,
-                                                                        #diversity_weight=diversity_weight,
-                                                                        #sparsity_weight=sparsity_weight,
+                                                                        proximity_weight=proximity_weight,
+                                                                        diversity_weight=diversity_weight,
+                                                                        sparsity_weight=sparsity_weight,categorical_penalty=0.0,
+                                                                        #feature_weights=feature_weights,
                                                                         random_seed=random_seed)
 
         dice_result_same = dice_query_instance.generate_counterfactuals(x, encoder=encoder,
@@ -146,9 +150,10 @@ def dice_impressed(CONF, predictive_model, cf_df, encoder, query_instance, metho
                                                                         total_CFs=k,
                                                                         dataset=dataset + '_' + str(
                                                                             CONF['prefix_length']),
-                                                                        #proximity_weight=proximity_weight,
-                                                                        #diversity_weight=diversity_weight,
-                                                                        #sparsity_weight=sparsity_weight,
+                                                                        proximity_weight=proximity_weight,
+                                                                        diversity_weight=diversity_weight,
+                                                                        sparsity_weight=sparsity_weight,categorical_penalty=0.0,
+                                                                        #feature_weights=feature_weights,
                                                                         random_seed=random_seed
                                                                         )
         generated_cfs_flip = dice_result_flip.cf_examples_list[0].final_cfs_df
@@ -192,7 +197,7 @@ def dice_impressed(CONF, predictive_model, cf_df, encoder, query_instance, metho
     except:
         print('Error evaluating cf_list')
     df_cf = pd.concat([df_conf_same,df_conf_flip])
-
+    df_cf.to_csv('cf_list.csv',index=False)
     sat_score = conformance_score(CONF, encoder, df=df_cf, dataset=dataset, features_names=features_names,
                                   d4py=d4py, query_instance=x, model_path=model_path,
                                   timestamp_col_name=timestamp_col_name)
@@ -217,19 +222,13 @@ def dice_impressed(CONF, predictive_model, cf_df, encoder, query_instance, metho
     df_cf = df_cf.drop_duplicates().reset_index(drop=True)
     df_cf = df_cf[df_cf['likelihood'] > 0.5]
 
-    try:
-        if not os.path.exists(path_cf):
-            os.makedirs(path_cf)
-            print("Directory '%s' created successfully" % path_cf)
-    except OSError as error:
-        print("Directory '%s' can not be created" % path_cf)
     df_cf.insert(loc=0, column='Case ID', value=np.divmod(np.arange(len(df_cf)), 1)[0] + 1)
     df_cf['Case ID'] = 'Case'+df_cf['Case ID'].astype(str)
     if impressed_pipeline:
-        df_cf = pd.merge(timestamps, df_cf, left_index=True, right_index=True)
+        if encoder.feature_selection != 'complex':
+            df_cf = pd.merge(timestamps, df_cf, left_index=True, right_index=True)
 
     dynamic_cols[0] = 'prefix'
-
     long_data = pd.wide_to_long(df_cf, stubnames=dynamic_cols, i='Case ID',
                                 j='order', sep='_', suffix=r'\w+')
     #timestamps = pd.date_range('1/1/2011', periods=len(long_data), freq='H')
@@ -238,7 +237,7 @@ def dice_impressed(CONF, predictive_model, cf_df, encoder, query_instance, metho
     long_data_sorted = long_data_sorted[long_data_sorted['prefix'] != '0']
 
     try:
-        long_data_sorted[timestamp_col_name] = pd.to_datetime(long_data_sorted[timestamp_col_name], utc=True)
+        long_data_sorted[timestamp_col_name] = pd.to_datetime(long_data_sorted[timestamp_col_name], unit='s')
     except:
         print('Error converting timestamp column to datetime')
     long_data_sorted.drop(columns=['order'], inplace=True)

@@ -13,10 +13,13 @@ from sklearn.feature_selection import mutual_info_classif
 from sklearn.preprocessing import LabelEncoder
 from nirdizati_light.pattern_discovery.utils.tools import create_embedded_pattern_in_trace, update_pattern_dict
 import seaborn as sb
+import re
+from pandas.core.dtypes.common import is_numeric_dtype
 
 
 def VariantSelection(main_data, case_id, activities, timestamp):
-    filtered_main_data = pm4py.format_dataframe(main_data, case_id=case_id, activity_key=activities,
+    df = main_data.copy()
+    filtered_main_data = pm4py.format_dataframe(df, case_id=case_id, activity_key=activities,
                                                 timestamp_key=timestamp)
 
     filtered_main_log = pm4py.convert_to_event_log(filtered_main_data)
@@ -36,9 +39,29 @@ def VariantSelection(main_data, case_id, activities, timestamp):
 
 
 def similarity_measuring_patterns(patterns_data, patient_data, pair_cases, start_search_points,
-                                  pairwise_distances_array, Core_activity=False):
+                                  pairwise_distances_array, interest_dimension):
+    done_patterns = []
+    rule_dependent_patterns = []
+    for org_pattern in patterns_data['patterns']:
+        if "+" in org_pattern:
+            rule_dependent_patterns.append(org_pattern.split("+")[0])
 
-    for pattern in patterns_data['patterns']:
+        if org_pattern in done_patterns:
+            continue
+
+        if "+" in org_pattern and org_pattern.split("+")[0] in done_patterns:
+            patterns_data.loc[patterns_data['patterns'] == org_pattern, 'Case_Distance_Interest'] = \
+                patterns_data.loc[
+                    patterns_data['patterns'] == org_pattern.split("+")[0], 'Case_Distance_Interest'].values[0]
+
+            continue
+
+        elif "+" in org_pattern and org_pattern.split("+")[0] not in done_patterns:
+            pattern = org_pattern.split("+")[0]
+
+        else:
+            pattern = org_pattern
+
         in_pattern_cases = patient_data[patient_data[pattern] > 0].index
         out_pattern_cases = patient_data[patient_data[pattern] == 0].index
         # in_pattern_pair_cases = [(a, b) for idx, a in enumerate(in_pattern_cases) for b in in_pattern_cases[idx + 1:]]
@@ -54,8 +77,30 @@ def similarity_measuring_patterns(patterns_data, patient_data, pair_cases, start
         for item in in_out_pattern_pair_cases:
             selected_pair_index.append(pair_cases.index(item, start_search_points[item[0]]))
 
-        patterns_data.loc[patterns_data['patterns'] == pattern, 'Case_Distance_Interest'] = \
-            np.mean([pairwise_distances_array[ind] for ind in selected_pair_index])
+        # if there is no pair of cases with and without the pattern, the case distance must be the highest possible
+        # as this patterns is not discriminative
+        if len(selected_pair_index) == 0:
+            patterns_data.loc[patterns_data['patterns'] == pattern, 'Case_Distance_Interest'] = 1
+            if pattern != org_pattern:
+                patterns_data.loc[patterns_data['patterns'] == org_pattern, 'Case_Distance_Interest'] = 1
+                done_patterns.append(org_pattern)
+
+            done_patterns.append(pattern)
+            continue
+
+        # avg_distance = np.mean([pairwise_distances_array[ind] for ind in selected_pair_index])
+        avg_distance = np.min([pairwise_distances_array[ind] for ind in selected_pair_index])
+        patterns_data.loc[patterns_data['patterns'] == pattern, 'Case_Distance_Interest'] = avg_distance
+
+        if pattern != org_pattern:
+            patterns_data.loc[patterns_data['patterns'] == org_pattern, 'Case_Distance_Interest'] = avg_distance
+            done_patterns.append(org_pattern)
+
+        done_patterns.append(pattern)
+
+    if interest_dimension < 3:
+        patterns_data = patterns_data[patterns_data['Case_Distance_Interest'] < np.mean(pairwise_distances_array)]
+    # patterns_data = patterns_data[~patterns_data['patterns'].isin(rule_dependent_patterns)]
 
     return patterns_data
 
@@ -96,40 +141,58 @@ def predictive_measuring_patterns(patterns_data, patient_data, label_class, Core
     return patterns_data
 
 
-def frequency_measuring_patterns(patterns_data, pattern_list, patient_data, factual_outcome, label_class, outcome_type):
+def frequency_measuring_patterns(patterns_data, pattern_list, patient_data, factual_outcome, label_class, outcome_type,
+                                 frequency_type='relative'):
     pattern_indices = patterns_data.set_index('patterns').index
-    if outcome_type == 'binary':
-        factual_patient = patient_data[patient_data[label_class] == factual_outcome]
-        counterfactual_patient = patient_data[patient_data[label_class] != factual_outcome]
-    elif outcome_type == 'numerical':
-        factual_patient = patient_data[patient_data[label_class] >= factual_outcome]
-        counterfactual_patient = patient_data[patient_data[label_class] < factual_outcome]
+    if frequency_type == 'relative':
+        if outcome_type == 'binary':
+            factual_patient = patient_data[patient_data[label_class] == factual_outcome]
+            counterfactual_patient = patient_data[patient_data[label_class] != factual_outcome]
+        elif outcome_type == 'numerical':
+            factual_patient = patient_data[patient_data[label_class] >= factual_outcome]
+            counterfactual_patient = patient_data[patient_data[label_class] < factual_outcome]
 
-    for pattern in pattern_list:
-        pattern_index = pattern_indices.get_loc(pattern)
+        for pattern in pattern_list:
+            pattern_index = pattern_indices.get_loc(pattern)
 
-        # calculate factual and counterfactual frequencies
-        pattern_occurrences_counter = counterfactual_patient[pattern]
-        pattern_occurrences_fact = factual_patient[pattern]
+            # calculate factual and counterfactual frequencies
+            pattern_occurrences_counter = counterfactual_patient[pattern]
+            pattern_occurrences_fact = factual_patient[pattern]
 
-        pattern_support_counter = np.count_nonzero(pattern_occurrences_counter)
-        pattern_support_fact = np.count_nonzero(pattern_occurrences_fact)
+            pattern_support_counter = np.count_nonzero(pattern_occurrences_counter)
+            pattern_support_fact = np.count_nonzero(pattern_occurrences_fact)
 
-        if len(factual_patient) == 0:
-            factual_frequency = 0
-        else:
-            factual_frequency = pattern_support_fact / len(factual_patient)
+            if len(factual_patient) == 0:
+                factual_frequency = 0
+            else:
+                factual_frequency = pattern_support_fact / len(factual_patient)
 
-        if len(counterfactual_patient) == 0:
-            counterfactual_frequency = 0
-        else:
-            counterfactual_frequency = pattern_support_counter / len(counterfactual_patient)
+            if len(counterfactual_patient) == 0:
+                counterfactual_frequency = 0
+            else:
+                counterfactual_frequency = pattern_support_counter / len(counterfactual_patient)
 
-        # patterns_data.at[pattern_index, 'Pattern_Frequency'] = np.sum(pattern_occurrences)
-        # patterns_data.at[pattern_index, 'Case_Support'] = pattern_support
-        patterns_data.at[pattern_index, 'Frequency_Interest'] = counterfactual_frequency - factual_frequency
+            # patterns_data.at[pattern_index, 'Pattern_Frequency'] = np.sum(pattern_occurrences)
+            # patterns_data.at[pattern_index, 'Case_Support'] = pattern_support
+            patterns_data.at[pattern_index, 'Frequency_Interest'] = np.abs(counterfactual_frequency - factual_frequency)
+
+    elif frequency_type == 'absolute':
+        for pattern in pattern_list:
+            pattern_index = pattern_indices.get_loc(pattern)
+
+            pattern_occurrences = patient_data[pattern]
+            pattern_support = np.count_nonzero(pattern_occurrences)
+            pattern_frequency_interest = pattern_support / len(patient_data)
+
+            # patterns_data.at[pattern_index, 'Pattern_Frequency'] = np.sum(pattern_occurrences)
+            # patterns_data.at[pattern_index, 'Case_Support'] = pattern_support
+            patterns_data.at[pattern_index, 'Frequency_Interest'] = pattern_frequency_interest
+
+    else:
+        raise ValueError("Frequency type should be either relative or absolute!")
 
     return patterns_data
+
 
 def create_pattern_frame(pattern_list):
     patterns_data = pd.DataFrame(columns=pattern_list)
@@ -139,11 +202,12 @@ def create_pattern_frame(pattern_list):
     return patterns_data
 
 
-def create_pattern_attributes(patient_data, label_class, factual_outcome, pattern_list, outcome_type):
+def create_pattern_attributes(patient_data, label_class, factual_outcome, pattern_list, outcome_type, frequency_type,
+                              pairwise_distances_array, pair_cases, start_search_points, interest_dimension):
     patterns_data = create_pattern_frame(pattern_list)
     ## Frequency-based measures
     patterns_data = frequency_measuring_patterns(patterns_data, pattern_list, patient_data,
-                                                 factual_outcome, label_class, outcome_type)
+                                                 factual_outcome, label_class, outcome_type, frequency_type)
     print('frequency measures done')
 
     ## Discriminative measures
@@ -156,7 +220,14 @@ def create_pattern_attributes(patient_data, label_class, factual_outcome, patter
         patterns_data.loc[patterns_data['patterns'] == pattern, 'likelihood'] = \
             np.mean(patient_data[patient_data[pattern] > 0]['likelihood'])
 
-    print('likelihood measures done')
+    # print('likelihood measures done')
+
+    # # # similarity measures
+    patterns_data = similarity_measuring_patterns(patterns_data, patient_data, pair_cases, start_search_points,
+                                                      pairwise_distances_array, interest_dimension)
+    print('filter based on similarity measures done')
+    # # # #
+
 
     return patterns_data
 
@@ -195,10 +266,9 @@ def calculate_pairwise_case_distance(X_features, num_col):
 
 
 def Pattern_extension(case_data, Trace_graph, Core_activity, case_id, Patterns_Dictionary, Max_gap_between_events,
-                      new_patterns_for_core=None,
-                      Direct_predecessor=False, Direct_successor=True,
-                      Direct_context=False, Concurrence=True, Eventual_following=True, Eventual_preceding=False):
-
+                      pattern_name=None, new_patterns_for_core=None,
+                      Direct_predecessor=True, Direct_successor=True,
+                      Direct_context=True, Concurrence=True, Eventual_following=True, Eventual_preceding=True):
     all_nodes = set(Trace_graph.nodes)
     nodes_values = [Trace_graph._node[n]['value'] for n in Trace_graph.nodes]
     nm = iso.categorical_node_match("value", nodes_values)
@@ -223,7 +293,8 @@ def Pattern_extension(case_data, Trace_graph, Core_activity, case_id, Patterns_D
                     Patterns_Dictionary, new_Pattern_IDs = update_pattern_dict(Patterns_Dictionary, preceding_pattern,
                                                                                embedded_trace_graph,
                                                                                case_data, case_id, nm, em,
-                                                                               Core_activity, new_patterns_for_core)
+                                                                               Core_activity, pattern_name,
+                                                                               new_patterns_for_core)
                     if new_Pattern_IDs != "" and new_patterns_for_core is not None:
                         new_patterns_for_core.append(new_Pattern_IDs)
                 in_pattern_nodes.remove(n)
@@ -241,7 +312,8 @@ def Pattern_extension(case_data, Trace_graph, Core_activity, case_id, Patterns_D
                     Patterns_Dictionary, new_Pattern_IDs = update_pattern_dict(Patterns_Dictionary, following_pattern,
                                                                                embedded_trace_graph,
                                                                                case_data, case_id, nm, em,
-                                                                               Core_activity, new_patterns_for_core)
+                                                                               Core_activity, pattern_name,
+                                                                               new_patterns_for_core)
                     if new_Pattern_IDs != "" and new_patterns_for_core is not None:
                         new_patterns_for_core.append(new_Pattern_IDs)
                 out_pattern_nodes.remove(n)
@@ -267,7 +339,8 @@ def Pattern_extension(case_data, Trace_graph, Core_activity, case_id, Patterns_D
                     Patterns_Dictionary, new_Pattern_IDs = update_pattern_dict(Patterns_Dictionary, parallel_pattern,
                                                                                embedded_trace_graph,
                                                                                case_data, case_id, nm, em,
-                                                                               Core_activity, new_patterns_for_core)
+                                                                               Core_activity, pattern_name,
+                                                                               new_patterns_for_core)
                     if new_Pattern_IDs != "" and new_patterns_for_core is not None:
                         new_patterns_for_core.append(new_Pattern_IDs)
 
@@ -291,7 +364,8 @@ def Pattern_extension(case_data, Trace_graph, Core_activity, case_id, Patterns_D
                                                                                Eventual_follow_pattern, [],
                                                                                case_data, case_id,
                                                                                nm, em,
-                                                                               Core_activity, new_patterns_for_core)
+                                                                               Core_activity, pattern_name,
+                                                                               new_patterns_for_core)
                     if new_Pattern_IDs != "" and new_patterns_for_core is not None:
                         new_patterns_for_core.append(new_Pattern_IDs)
 
@@ -315,7 +389,8 @@ def Pattern_extension(case_data, Trace_graph, Core_activity, case_id, Patterns_D
                                                                                Eventual_precede_pattern, [],
                                                                                case_data, case_id,
                                                                                nm, em,
-                                                                               Core_activity, new_patterns_for_core)
+                                                                               Core_activity, pattern_name,
+                                                                               new_patterns_for_core)
                     if new_Pattern_IDs != "" and new_patterns_for_core is not None:
                         new_patterns_for_core.append(new_Pattern_IDs)
 
@@ -341,7 +416,8 @@ def Pattern_extension(case_data, Trace_graph, Core_activity, case_id, Patterns_D
                                                                                    context_direct_pattern,
                                                                                    embedded_trace_graph,
                                                                                    case_data, case_id, nm, em,
-                                                                                   Core_activity, new_patterns_for_core)
+                                                                                   Core_activity, pattern_name,
+                                                                                   new_patterns_for_core)
                         if new_Pattern_IDs != "" and new_patterns_for_core is not None:
                             new_patterns_for_core.append(new_Pattern_IDs)
                 else:
@@ -351,7 +427,8 @@ def Pattern_extension(case_data, Trace_graph, Core_activity, case_id, Patterns_D
                                                                                context_direct_pattern,
                                                                                embedded_trace_graph,
                                                                                case_data, case_id, nm, em,
-                                                                               Core_activity, new_patterns_for_core)
+                                                                               Core_activity, pattern_name,
+                                                                               new_patterns_for_core)
                     if new_Pattern_IDs != "" and new_patterns_for_core is not None:
                         new_patterns_for_core.append(new_Pattern_IDs)
 
@@ -365,7 +442,9 @@ def Trace_graph_generator(selected_variants, delta_time,
     case_data = selected_variants[selected_variants[case_column] == Case_ID]
 
     for i, treatments in enumerate(case_data[activity_column]):
-        Trace_graph.add_node(i, value=treatments, parallel=False, color=color_act_dict[treatments])
+        case_event_features = case_data.drop([case_column, activity_column, timestamp], axis=1)
+        Trace_graph.add_node(i, value=treatments, parallel=False, color=color_act_dict[treatments],
+                             event_data=case_event_features.values[i].tolist())
 
     trace = selected_variants.loc[selected_variants[case_column] == Case_ID, activity_column].tolist()
 
@@ -386,7 +465,8 @@ def Trace_graph_generator(selected_variants, delta_time,
             if parallel:
                 if max(parallel_indexes[max_key]) == i:
                     for ind in parallel_indexes[max_key]:
-                        Trace_graph.add_edge(ind, i + 1, eventually=False)
+                        Trace_graph.add_edge(ind, i + 1, eventually=False,
+                                             dtime=abs(start_times[ind] - start_times[i + 1]).total_seconds())
 
                 if min(parallel_indexes[max_key]) > 0:
                     if max_key > 0:
@@ -396,17 +476,24 @@ def Trace_graph_generator(selected_variants, delta_time,
                         if len(parallel_indexes[max_last_key]) > 0:
                             for pind in parallel_indexes[max_last_key]:
                                 for ind in parallel_indexes[max_key]:
-                                    Trace_graph.add_edge(pind, ind, eventually=False)
+                                    Trace_graph.add_edge(pind, ind, eventually=False,
+                                                         dtime=abs(
+                                                             start_times[pind] - start_times[ind]).total_seconds())
                         else:
                             for ind in parallel_indexes[max_key]:
-                                Trace_graph.add_edge(min(parallel_indexes[max_key]) - 1, ind, eventually=False)
+                                Trace_graph.add_edge(min(parallel_indexes[max_key]) - 1, ind, eventually=False,
+                                                     dtime=abs(start_times[min(parallel_indexes[max_key]) - 1]
+                                                               - start_times[ind]).total_seconds())
 
                     else:
                         for ind in parallel_indexes[max_key]:
-                            Trace_graph.add_edge(min(parallel_indexes[max_key]) - 1, ind, eventually=False)
+                            Trace_graph.add_edge(min(parallel_indexes[max_key]) - 1, ind, eventually=False,
+                                                 dtime=abs(start_times[min(parallel_indexes[max_key]) - 1]
+                                                           - start_times[ind]).total_seconds())
 
             else:
-                Trace_graph.add_edge(i, i + 1, eventually=False)
+                Trace_graph.add_edge(i, i + 1, eventually=False,
+                                     dtime=abs(start_times[i] - start_times[i + 1]).total_seconds())
 
             parallel_indexes.update({i + 1: set()})
             parallel = False
@@ -549,7 +636,8 @@ def plot_patterns(Patterns_Dictionary, pattern_id, color_act_dict, pattern_attri
     nx.draw_networkx_edges(Patterns_Dictionary[pattern_id]['pattern'], pos, arrows=True,
                            width=2, edge_color=edge_styles, ax=ax[0][0])
 
-    plt.title('Pattern ID: ' + str(pattern_id))
+    plt.title(
+        'Pattern ID: ' + str(pattern_id) + '\n\nrules: ' + Patterns_Dictionary[pattern_id]['pattern'].graph['rule'])
     plt.axis('off')
 
     for v in np.unique(nodes_values):
@@ -609,7 +697,8 @@ def plot_only_pattern(Patterns_Dictionary, pattern_id, color_act_dict, out):
     nx.draw_networkx_edges(Patterns_Dictionary[pattern_id]['pattern'], pos, arrows=True,
                            width=2, edge_color=edge_styles, ax=ax)
 
-    plt.title('Pattern ID: ' + str(pattern_id))
+    plt.title('Pattern ID: ' + str(pattern_id) + '\n\nrules: ' + str(
+        Patterns_Dictionary[pattern_id]['pattern'].graph['rule']))
     plt.axis('off')
 
     for v in np.unique(nodes_values):
@@ -624,6 +713,7 @@ def plot_only_pattern(Patterns_Dictionary, pattern_id, color_act_dict, out):
     plt.close(fig)
 
     return fig, ax
+
 
 def defining_graph_pos(G):
     pos = dict()
@@ -691,8 +781,7 @@ def defining_graph_pos(G):
 
 def Single_Pattern_Extender(all_extension_list, chosen_pattern_ID,
                             EventLog_graphs, data, Max_gap_between_events, activity, case_id,
-                            Direct_predecessor=False, Direct_successor=True, Eventual_following=True):
-
+                            Direct_predecessor=True, Direct_successor=True, Eventual_following=True):
     Extended_patterns_at_stage = dict()
     new_patterns_for_core = []
     Core_activity = chosen_pattern_ID.split("_")[0]
@@ -739,7 +828,7 @@ def Single_Pattern_Extender(all_extension_list, chosen_pattern_ID,
                                                                               extended_pattern,
                                                                               new_embedded_trace_graph,
                                                                               case_data, case_id, nm,
-                                                                              em,
+                                                                              em, Core_activity,
                                                                               chosen_pattern_ID,
                                                                               new_patterns_for_core)
             if new_Pattern_IDs != "":
@@ -763,7 +852,7 @@ def Single_Pattern_Extender(all_extension_list, chosen_pattern_ID,
                                                                               extended_pattern,
                                                                               new_embedded_trace_graph,
                                                                               case_data, case_id, nm,
-                                                                              em,
+                                                                              em, Core_activity,
                                                                               chosen_pattern_ID,
                                                                               new_patterns_for_core)
             if new_Pattern_IDs != "":
@@ -789,23 +878,183 @@ def Single_Pattern_Extender(all_extension_list, chosen_pattern_ID,
                 Extended_patterns_at_stage, new_Pattern_IDs = update_pattern_dict(Extended_patterns_at_stage,
                                                                                   Eventual_follow_pattern, [],
                                                                                   case_data, case_id,
-                                                                                  nm, em,
+                                                                                  nm, em, Core_activity,
                                                                                   chosen_pattern_ID,
                                                                                   new_patterns_for_core)
                 if new_Pattern_IDs != "":
                     new_patterns_for_core.append(new_Pattern_IDs)
 
-        # if len(new_patterns_for_core) > 0:
-        #     patient_data.loc[:, new_patterns_for_core] = 0
-        #     for PID in new_patterns_for_core:
-        #         for CaseID in np.unique(Extended_patterns_at_stage[PID]['Instances']['case']):
-        #             variant_frequency_case = Extended_patterns_at_stage[PID]['Instances']['case'].count(CaseID)
-        #             # Other_cases = \
-        #             #     selected_variants.loc[
-        #             #         selected_variants['case:concept:name'] == CaseID, 'case:CaseIDs'].tolist()[
-        #             #         0]
-        #             # for Ocase in Other_cases:
-        #             patient_data.loc[patient_data['case:concept:name'] == CaseID, PID] = variant_frequency_case
+    all_extension_list.update(Extended_patterns_at_stage)
+    return all_extension_list, Extended_patterns_at_stage
+
+
+def filtering_cases(data, activity, case_id, pattern_to_extend, data_dependent_rules, aggregation_style='all'):
+    Core_activity = pattern_to_extend.split('+')[0]
+    data_condition = []
+    rules_number = pattern_to_extend.count("+")
+    temp_pattern = pattern_to_extend
+    search_start = 0
+    for r in range(rules_number):
+        rule_index = temp_pattern.find("rule_", search_start)
+        search_start = rule_index + 1
+        data_condition.append(data_dependent_rules[temp_pattern[:rule_index + 6]])
+    text_pattern = r"\('([^)]+)'\s*(<=|<|>=|>)\s*([\d.]+)\)"
+    Operators = []
+    Feature_Names = []
+    Values = []
+    Cat_Values = []
+    Cat_Feat_Name = []
+    for rule in data_condition:
+        matches = re.findall(text_pattern, rule)
+        for mat in matches:
+            feat_name, operator, value = mat
+            # if "-" in feat_name:
+            #     feat_name = feat_name.split('-')[0]
+            if "_" in feat_name:
+                name_of_feature, feat_value = feat_name.rsplit('_', 1)
+                Cat_Values.append(feat_value)
+                Cat_Feat_Name.append(name_of_feature)
+            else:
+                Cat_Values.append(" ")
+                Cat_Feat_Name.append(feat_name)
+            Feature_Names.append(feat_name)
+            Operators.append(operator)
+            Values.append(value)
+    print('Core:  ' + Core_activity)
+    filtered_data = data[data[activity] == Core_activity]
+    for idx, name in enumerate(Feature_Names):
+        try:
+            if not is_numeric_dtype(data[name].dtype):
+                if "[" in Cat_Values[idx]:
+                    cat_value_list = Cat_Values[idx].strip("[]").split(", ")
+                    cat_value_list = [A.strip("''") for A in cat_value_list]
+                    filtered_data = filtered_data[filtered_data[Cat_Feat_Name[idx]].isin(cat_value_list)]
+                else:
+                    filtered_data = filtered_data[filtered_data[Cat_Feat_Name[idx]] == Cat_Values[idx]]
+            else:
+                query_string = f"`{name}` {Operators[idx]} {Values[idx]}"
+                filtered_data = filtered_data.query(query_string)
+        except:
+            if not is_numeric_dtype(data[Cat_Feat_Name[idx]].dtype):
+                if "[" in Cat_Values[idx]:
+                    cat_value_list = Cat_Values[idx].strip("[]").split(", ")
+                    cat_value_list = [A.strip("''") for A in cat_value_list]
+                    filtered_data = filtered_data[filtered_data[Cat_Feat_Name[idx]].isin(cat_value_list)]
+                else:
+                    filtered_data = filtered_data[data[Cat_Feat_Name[idx]] == Cat_Values[idx]]
+            else:
+                query_string = f"`{name}` {Operators[idx]} {Values[idx]}"
+                filtered_data = filtered_data.query(query_string)
+
+    filtered_cases = filtered_data[case_id]
+    return filtered_cases
+
+
+def Single_Pattern_Extender_with_attributes(all_extension_list, chosen_pattern_ID,
+                                            EventLog_graphs, data, Max_gap_between_events, activity, case_id,
+                                            data_dependent_rules, pattern_to_extend,
+                                            Direct_predecessor=True, Direct_successor=True, Eventual_following=True):
+    Extended_patterns_at_stage = dict()
+    new_patterns_for_core = []
+    filtered_cases = filtering_cases(data, activity, case_id, pattern_to_extend, data_dependent_rules)
+    selected_variants = data[data[case_id].isin(filtered_cases)]
+    # selected_variants = all_variants[Core_activity]
+    print(chosen_pattern_ID)
+    for idx, case in enumerate(all_extension_list[chosen_pattern_ID]['Instances']['case']):
+        if case not in list(filtered_cases):
+            continue
+        Trace_graph = EventLog_graphs[case].copy()
+        nodes_values = [Trace_graph._node[n]['value'] for n in Trace_graph.nodes]
+        embedded_trace_graph = all_extension_list[chosen_pattern_ID]['Instances']['emb_trace'][idx]
+        inside_pattern_nodes = set(Trace_graph.nodes).difference(set(embedded_trace_graph.nodes))
+        to_remove = set(Trace_graph.nodes).difference(inside_pattern_nodes)
+        chosen_pattern = Trace_graph.copy()
+        chosen_pattern.remove_nodes_from(to_remove)
+
+        ending_nodes = {n[0] for n in chosen_pattern.out_degree if n[1] == 0}
+        starting_nodes = {n[0] for n in chosen_pattern.in_degree if n[1] == 0}
+
+        case_data = selected_variants[selected_variants[case_id] == case]
+        values = nx.get_node_attributes(Trace_graph, 'value')
+        parallel = nx.get_node_attributes(Trace_graph, 'parallel')
+        color = nx.get_node_attributes(Trace_graph, 'color')
+
+        nm = iso.categorical_node_match("value", nodes_values)
+        em = iso.categorical_node_match("eventually", [True, False])
+
+        # preceding extension
+        in_pattern_nodes = set(embedded_trace_graph.pred['pattern'].keys())
+        if Direct_predecessor and len(in_pattern_nodes) > 0:
+            extended_pattern = chosen_pattern.copy()
+            in_pattern_values = [values[n] for n in in_pattern_nodes]
+            for in_node in in_pattern_nodes:
+                extended_pattern.add_node(in_node,
+                                          value=values[in_node], parallel=parallel[in_node],
+                                          color=color[in_node])
+                for node in starting_nodes:
+                    extended_pattern.add_edge(in_node, node, eventually=False)
+
+            new_embedded_trace_graph = create_embedded_pattern_in_trace(set(extended_pattern.nodes),
+                                                                        Trace_graph)
+            Extended_patterns_at_stage, new_Pattern_IDs = update_pattern_dict(Extended_patterns_at_stage,
+                                                                              extended_pattern,
+                                                                              new_embedded_trace_graph,
+                                                                              case_data, case_id, nm,
+                                                                              em,
+                                                                              chosen_pattern_ID, pattern_to_extend,
+                                                                              new_patterns_for_core)
+            if new_Pattern_IDs != "":
+                new_patterns_for_core.append(new_Pattern_IDs)
+
+        # following extension
+        out_pattern_nodes = set(embedded_trace_graph.succ['pattern'].keys())
+        if Direct_successor and len(out_pattern_nodes) > 0:
+            extended_pattern = chosen_pattern.copy()
+            out_pattern_values = [values[n] for n in out_pattern_nodes]
+            for out_node in out_pattern_nodes:
+                extended_pattern.add_node(out_node,
+                                          value=values[out_node], parallel=parallel[out_node],
+                                          color=color[out_node])
+                for node in ending_nodes:
+                    extended_pattern.add_edge(node, out_node, eventually=False)
+
+            new_embedded_trace_graph = create_embedded_pattern_in_trace(set(extended_pattern.nodes),
+                                                                        Trace_graph)
+            Extended_patterns_at_stage, new_Pattern_IDs = update_pattern_dict(Extended_patterns_at_stage,
+                                                                              extended_pattern,
+                                                                              new_embedded_trace_graph,
+                                                                              case_data, case_id, nm,
+                                                                              em,
+                                                                              chosen_pattern_ID, pattern_to_extend,
+                                                                              new_patterns_for_core)
+            if new_Pattern_IDs != "":
+                new_patterns_for_core.append(new_Pattern_IDs)
+
+        ## all non-direct nodes
+        Eventual_relations_nodes = set(embedded_trace_graph.nodes).difference(
+            in_pattern_nodes.union(out_pattern_nodes))
+        Eventual_relations_nodes.remove('pattern')
+
+        # Eventually following patterns
+        if Eventual_following and len(out_pattern_nodes) > 0:
+            Eventual_following_nodes = {node for node in Eventual_relations_nodes if
+                                        max(out_pattern_nodes) < node < max(out_pattern_nodes) + Max_gap_between_events}
+            for Ev_F_nodes in Eventual_following_nodes:
+                Eventual_follow_pattern = chosen_pattern.copy()
+                Eventual_follow_pattern.add_node(Ev_F_nodes,
+                                                 value=values[Ev_F_nodes], parallel=parallel[Ev_F_nodes],
+                                                 color=color[Ev_F_nodes])
+                for node in ending_nodes:
+                    Eventual_follow_pattern.add_edge(node, Ev_F_nodes, eventually=True)
+
+                Extended_patterns_at_stage, new_Pattern_IDs = update_pattern_dict(Extended_patterns_at_stage,
+                                                                                  Eventual_follow_pattern, [],
+                                                                                  case_data, case_id,
+                                                                                  nm, em,
+                                                                                  chosen_pattern_ID, pattern_to_extend,
+                                                                                  new_patterns_for_core)
+                if new_Pattern_IDs != "":
+                    new_patterns_for_core.append(new_Pattern_IDs)
 
     all_extension_list.update(Extended_patterns_at_stage)
     return all_extension_list, Extended_patterns_at_stage

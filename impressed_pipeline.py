@@ -19,12 +19,13 @@ from nirdizati_light.predictive_model.common import ClassificationMethods, get_t
 from nirdizati_light.predictive_model.predictive_model import PredictiveModel, drop_columns
 import random
 from dataset_confs import DatasetConfs
+import pickle
 import dtreeviz
 from declare4py.declare4py import Declare4Py
 from declare4py.enums import TraceState
 from datetime import datetime
 from sklearn import tree
-from nirdizati_light.pattern_discovery.utils.Alignment_Check import Alignment_Checker
+from nirdizati_light.pattern_discovery.utils.Alignment_Check import alignment_check
 import itertools
 import shutil
 logger = logging.getLogger(__name__)
@@ -122,11 +123,15 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
             dynamic_cols = [*dataset_confs.activity_col.values()] + [timestamp]
 
         for x in range(len(test_df_correct.iloc[:50,:])):
-
             query_instance = test_df_correct.iloc[x, :].to_frame().T
             case_id = query_instance.iloc[0, 0]
             query_instance = query_instance.drop(columns=['trace_id'])
-            output_path = 'results/simple_trace_results/'
+            if CONF['feature_selection'] == EncodingType.SIMPLE_TRACE.value:
+                output_path = 'results/simple_trace_results_3_objectives/'
+                #output_path = 'results/simple_trace_results_4_objectives/'
+            elif CONF['feature_selection'] == EncodingType.COMPLEX.value:
+                #output_path = 'results/complex_results_3_objectives/'
+                output_path = 'results/complex_results_4_objectives/'
             if not os.path.exists(output_path):
                 os.makedirs(output_path)
             discovery_path= output_path+'%s_discovery_%s_%s_%s' % (dataset, impressed_pipeline,CONF['seed'],case_id)
@@ -239,57 +244,47 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
 
                 logger.debug("EVALUATE GLOBAL GLASS-BOX MODEL")
                 encoder.decode(test_df)
-                test_df_dummy = enc_ohe.transform(test_df)
-                test_df_dummy_subset = test_df_dummy.drop(columns=[col for col in test_df_dummy.columns if 'prefix' in col]+['label'])
-                test_log_df = pd.wide_to_long(test_df_alignment, stubnames=['prefix', timestamp], i='trace_id',
-                                              j='order', sep='_', suffix=r'\w+').reset_index()
-                test_log_df = test_log_df[dynamic_cols + to_remove + ['trace_id','label']]
+                #test_df_dummy = enc_ohe.transform(test_df)
+                #test_df_dummy_subset = test_df_dummy.drop(columns=[col for col in test_df_dummy.columns if 'prefix' in col]+['label'])
+                #test_log_df = pd.wide_to_long(test_df_alignment, stubnames=['prefix', timestamp], i='trace_id',
+                #                              j='order', sep='_', suffix=r'\w+').reset_index()
 
                 start_time = datetime.now()
-                impressed_test_df = Alignment_Checker(log_df=test_log_df,case_id='trace_id',timestamp=timestamp,activity='prefix',
-                                                    outcome='label',pattern_folder=discovery_path,delta_time=delta_time)
+                test_log_df = pd.wide_to_long(test_df_alignment, stubnames=['prefix', timestamp], i='trace_id',
+                                              j='order', sep='_', suffix=r'\w+').reset_index()
+
+                eventlog_graphs = pickle.load(open(discovery_path + '/EventLogGraph.pickle', 'rb'))
+                impressed_test_df = alignment_check(log_df=test_log_df,case_id='trace_id',timestamp=timestamp,activity='prefix',
+                                                    outcome='label',pattern_folder=discovery_path,delta_time=delta_time,)
                 time_alignment = (datetime.now() - start_time).total_seconds()
 
                 impressed_test_df.drop(columns=[timestamp, 'prefix'], inplace=True)
-                update_impressed_test_df = pd.merge(impressed_test_df, test_df_dummy_subset,
-                                                    on='trace_id', how='left')
+                #update_impressed_test_df = pd.merge(impressed_test_df, test_df_dummy_subset,
+                #                                    on='trace_id', how='left')
 
-                update_impressed_test_df.dropna(inplace=True)
-                update_impressed_test_df = update_impressed_test_df.rename(columns=dict_values)
-                update_impressed_test_df = update_impressed_test_df[(drop_columns(update_test_X).columns)]
-                global_preds = glass_box.model.predict(update_impressed_test_df)
-                global_probs = glass_box.model.predict_proba(update_impressed_test_df)
+                impressed_test_df.dropna(inplace=True)
+                impressed_test_df = impressed_test_df.reindex(test_X.columns,axis=1)
+                global_preds = glass_box.model.predict(drop_columns(impressed_test_df))
+                global_probs = glass_box.model.predict_proba(drop_columns(impressed_test_df))
                 encoder.encode(test_df)
                 predicted = predictive_model.model.predict(drop_columns(test_df))
                 pred_evaluate_glassbox = evaluate_classifier(predicted, global_preds.astype(int), global_probs)
                 real_evaluate_glassbox = evaluate_classifier(actual, global_preds.astype(int), global_probs)
                 global_fidelity = pred_evaluate_glassbox['accuracy'] if pred_evaluate_glassbox['accuracy'] > real_evaluate_glassbox['accuracy'] else real_evaluate_glassbox['accuracy']
                 print('Global fidelity', global_fidelity)
-                DT_CONF = CONF.copy()
-                DT_CONF['predictive_model'] = ClassificationMethods.DT.value
-                DT_CONF['hyperparameter_optimisation_target'] = HyperoptTarget.F1.value
-
-                glass_box = PredictiveModel(DT_CONF, DT_CONF['predictive_model'], update_train_X, update_test_X)
-                if DT_CONF['hyperparameter_optimisation']:
-                    glass_box.model, glass_box.config = retrieve_best_model(
-                        glass_box,
-                        DT_CONF['predictive_model'],
-                        max_evaluations=CONF['hyperparameter_optimisation_epochs'],
-                        target=DT_CONF['hyperparameter_optimisation_target'], seed=DT_CONF['seed']
-                    )
 
                 if (local_fidelity > 0.9)  |  (global_fidelity > 0.8):
                     viz = dtreeviz.model(glass_box.model,
-                                         drop_columns(update_train_X),
-                                         update_train_X['label'],
-                                         feature_names=drop_columns(update_train_X).columns,
+                                         drop_columns(train_X),
+                                         train_X['label'],
+                                         feature_names=drop_columns(train_X).columns,
                                          class_names=['false', 'true'],
 
                                          )
                     v = viz.view(orientation="LR", scale=2, label_fontsize=5.5)
                     v.save(
-                        output_path + 'decision_trees' + '/' + '%s_impressed_encoding_%s_%s' % (
-                            dataset, case_id, CONF['prefix_length']) + '.svg')
+                        output_path + 'decision_trees' + '/' + '%s_impressed_encoding_%s_%s_%s' % (
+                            dataset, case_id, CONF['prefix_length'],data_dependency) + '.svg')
 
                 shutil.rmtree(discovery_path)
             else:
@@ -386,6 +381,7 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
             results['case_id'] = case_id
             results['prefix_length'] = CONF['prefix_length']
             results['impressed_pipeline'] = impressed_pipeline
+            # Add the other parameters
             results['local_fidelity'] = local_fidelity
             results['global_fidelity'] = global_fidelity
             results['time_discovery'] = time_discovery
@@ -395,12 +391,19 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
             results['encoding'] = CONF['feature_selection']
             x_eval['impressed_pipeline'] = impressed_pipeline
             x_eval['extension_step'] = max_extension_step
+            x_eval['seed'] = CONF['seed']
+            results['pattern_extension_strategy'] =pattern_extension_strategy
+            results['aggregation_style'] = aggregation_style
+            results['frequency_type'] = frequency_type
+            results['distance_style'] = distance_style
+            results['data_dependency'] = data_dependency
             try:
                 results['number_of_patterns'] = impressed_test_df.shape[1]
-                results['pareto_only'] = pareto_only
+                results['extension_style'] = extension_style
             except:
                 results['number_of_patterns'] = 0
-                results['pareto_only'] = False
+                results['extension_style'] = extension_style
+                #results['pareto_only'] = False
             results['extension_step'] = max_extension_step
             results['seed'] = CONF['seed']
             res_df = pd.DataFrame(results, index=[0])
@@ -412,10 +415,10 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
 
             try:
                 x_eval['number_of_patterns'] = Impressed_X.shape[1]
-                x_eval['pareto_only'] = pareto_only
+                x_eval['extension_style'] = extension_style
             except:
                 x_eval['number_of_patterns'] = 0
-                x_eval['pareto_only'] = False
+                x_eval['extension_style'] = extension_style
             x_eval['local_fidelity'] = local_fidelity
             x_eval['global_fidelity'] = global_fidelity
             x_eval = pd.DataFrame(x_eval, index=[0])
@@ -432,7 +435,6 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
 if __name__ == '__main__':
     dataset_list = {
         #'synthetic_data': [3, 5, 7, 9],
-
         'bpic2012_O_ACCEPTED-COMPLETE':[20,25,30,35],
         #'bpic2012_O_CANCELLED-COMPLETE':[20,25,30,35],
         #'bpic2012_O_DECLINED-COMPLETE':[20,25,30,35],
@@ -444,7 +446,7 @@ if __name__ == '__main__':
        #'BPIC17_O_REFUSED':[15,20,25,30],
 
     }
-    pipelines = [True,False]
+    pipelines = [True]
     for dataset, prefix_lengths in dataset_list.items():
         for prefix_length in prefix_lengths:
             for pipeline in pipelines:
@@ -472,11 +474,11 @@ if __name__ == '__main__':
                     'top_k': 10,
                     'hyperparameter_optimisation': True,  # TODO, this parameter is not used
                     'hyperparameter_optimisation_target': HyperoptTarget.AUC.value,
-                    'hyperparameter_optimisation_epochs': 1,
+                    'hyperparameter_optimisation_epochs': 20,
                     'time_encoding': TimeEncodingType.NONE.value,
                     'target_event': None,
                     'seed': seed,
-                    'impressed_pipeline': pipeline,
+                    'impressed_pipeline': True,
                 }
 
                 run_simple_pipeline(CONF=CONF, dataset_name=dataset)

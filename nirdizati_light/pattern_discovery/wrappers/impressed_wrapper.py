@@ -25,7 +25,7 @@ def impressed_wrapper(df,output_path,discovery_type,case_id,activity,timestamp,o
     if not os.path.exists(output_path):
         os.makedirs(output_path)
 
-    Log_graph_address = "/".join(output_path.split("/")[:-1]) + '/EventLogGraph.pickle'
+    Log_graph_address = output_path + '/EventLogGraph.pickle'
     if os.path.exists(Log_graph_address):
         EventLog_graphs = pickle.load(open(Log_graph_address, "rb"))
         log_graph_exist = True
@@ -33,8 +33,10 @@ def impressed_wrapper(df,output_path,discovery_type,case_id,activity,timestamp,o
     else:
         log_graph_exist = False
         EventLog_graphs = dict()
-    pareto_features = ['Outcome_Interest', 'Frequency_Interest', 'likelihood', 'Case_Distance_Interest']
-    pareto_sense = ['max', 'max', 'max', 'min']
+    pareto_features = ['Outcome_Interest', 'Frequency_Interest', 'likelihood']
+    pareto_sense = ['max', 'max', 'max']
+    #pareto_features = ['Outcome_Interest', 'Frequency_Interest', 'likelihood', 'Case_Distance_Interest']
+    #pareto_sense = ['max', 'max', 'max', 'min']
     df[activity] = df[activity].astype('string')
     df[activity] = df[activity].str.replace("_", "")
     df[activity] = df[activity].str.replace("-", "")
@@ -57,7 +59,7 @@ def impressed_wrapper(df,output_path,discovery_type,case_id,activity,timestamp,o
     elif outcome_type == 'numerical':
         df[outcome] = df[outcome].astype('float32')
 
-    color_dict_address = "/".join(output_path.split("/")[:-1]) + '/color_dict.pickle'
+    color_dict_address = output_path + '/color_dict.pickle'
     if os.path.exists(color_dict_address):
         color_act_dict = pickle.load(open(color_dict_address, "rb"))
     else:

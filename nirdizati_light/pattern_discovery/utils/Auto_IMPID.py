@@ -514,7 +514,7 @@ class AutoPatternDetection:
 
     def creat_pairwise_distance(self, style='case'):
         # calculate the pairwise case distance or load it from the file if it is already calculated
-        distance_address = "/".join(self.save_path.split("/")[:-1]) + '/dist_%s.pickle' % style
+        distance_address = self.save_path + '/dist_%s.pickle' % style
         if not os.path.exists(distance_address):
             pairwise_distances_array = self.calculate_pairwise_case_distance(style)
             with open(distance_address, 'wb') as f:

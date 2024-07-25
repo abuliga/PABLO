@@ -733,3 +733,54 @@ if __name__ == '__main__':
         patient_data = Alignment_Check.check_pattern_alignment(EventLog_graphs, patient_data, Pattern, pattern_name)
 
     patient_data.to_csv(pattern_folder + '/Alignment_Checked_event_log.csv', index=False)
+
+
+def alignment_check(log_df,case_id, activity, timestamp, outcome, pattern_folder, delta_time):
+
+    # Load the log
+    #df = pd.read_csv(args.log_path)
+    df = log_df
+    df = df[[case_id, activity, timestamp, outcome]]
+    df[activity] = df[activity].astype('string')
+    df[activity] = df[activity].str.replace("_", "-")
+    df[timestamp] = pd.to_datetime(df[timestamp])
+    df[case_id] = df[case_id].astype('string')
+    patient_data = df.drop_duplicates(subset=case_id, keep='first')
+
+    color_codes = ["#" + ''.join([random.choice('000123456789ABCDEF') for i in range(6)])
+                   for j in range(len(df[activity].unique()))]
+
+    color_act_dict = dict()
+    counter = 0
+    for act in df[activity].unique():
+        color_act_dict[act] = color_codes[counter]
+        counter += 1
+    color_act_dict['start'] = 'k'
+    color_act_dict['end'] = 'k'
+
+    EventLog_graphs = dict()
+    for case in df[case_id].unique():
+        case_data = df[df[case_id] == case]
+        if case not in EventLog_graphs.keys():
+            Trace_graph = Trace_graph_generator(df, delta_time,
+                                                case, color_act_dict,
+                                                case_id, activity, timestamp)
+
+            EventLog_graphs[case] = Trace_graph.copy()
+        else:
+            Trace_graph = EventLog_graphs[case].copy()
+
+    # Load the pattern
+    Pattern_files = glob.glob(pattern_folder + '/*.pickle')
+    #remove dist_all.pickle, EventLogGraph.pickle, and color_dict.pickle
+    Pattern_files = [x for x in Pattern_files if 'dist_all' not in x]
+    Pattern_files = [x for x in Pattern_files if 'EventLogGraph' not in x]
+    Pattern_files = [x for x in Pattern_files if 'color_dict' not in x]
+    Alignment_Check = Alignment_Checker(case_id, outcome)
+    for pattern in Pattern_files:
+        pattern_name = os.path.basename(pattern).split('.')[0]
+        patient_data[pattern_name] = 0
+        Pattern = pickle.load(open(pattern, 'rb'))
+        patient_data, _ = Alignment_Check.check_pattern_alignment(EventLog_graphs, patient_data, Pattern, pattern_name)
+
+    return patient_data

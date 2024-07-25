@@ -98,7 +98,7 @@ def similarity_measuring_patterns(patterns_data, patient_data, pair_cases, start
 
         done_patterns.append(pattern)
 
-    if interest_dimension < 3:
+    if interest_dimension < 4:
         patterns_data = patterns_data[patterns_data['Case_Distance_Interest'] < np.mean(pairwise_distances_array)]
     # patterns_data = patterns_data[~patterns_data['patterns'].isin(rule_dependent_patterns)]
 

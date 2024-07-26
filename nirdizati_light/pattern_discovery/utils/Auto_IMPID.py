@@ -89,6 +89,12 @@ class AutoPatternDetection:
         # self.pairwise_distances_array, self.pair_cases, self.start_search_points = None, None, None
         self.pairwise_distances_array, self.pair_cases, self.start_search_points = self.creat_pairwise_distance(style=distance_style)
 
+    def extract_rules(self, text):
+        rule_pattern = re.compile(r'rule_\d+')
+        matches = rule_pattern.finditer(text)
+        end_indices = [match.end() for match in matches]
+        results = [text[:end] for end in end_indices]
+        return results
 
     def AutoStepWise_PPD(self):
         Alignment_Check = Alignment_Checker(self.case_id, self.outcome, self.outcome_type)
@@ -295,11 +301,17 @@ class AutoPatternDetection:
             P_graph = Extended_patterns_at_stage[pattern]['pattern']
             rules_number = pattern.count("+")
             P_graph.graph['rule'] = []
-            search_start = 0
-            for r in range(rules_number):
-                rule_index = pattern.find("rule_", search_start)
-                search_start = rule_index + 1
-                P_graph.graph['rule'].append(data_dependent_rules[pattern[:rule_index + 6]])
+            rules_lists = self.extract_rules(pattern)
+            for rule in rules_lists:
+                P_graph.graph['rule'].append(data_dependent_rules[rule])
+            # search_start = 0
+            # for r in range(rules_number):
+            #     rule_index = pattern.find("rule_", search_start)
+            #     search_start = rule_index + 1
+                # try:
+                #     P_graph.graph['rule'].append(data_dependent_rules[pattern[:rule_index + 6]])
+                # except:
+                #     print('Error')
 
             pickle.dump(P_graph, open(self.save_path + '/%s.pickle' % pattern, "wb"))
             plot_only_pattern(Extended_patterns_at_stage, pattern, self.color_act_dict, self.save_path)
@@ -406,11 +418,14 @@ class AutoPatternDetection:
                 P_graph = All_extended_patterns_dict[pattern]['pattern']
                 rules_number = pattern.count("+")
                 P_graph.graph['rule'] = []
-                search_start = 0
-                for r in range(rules_number):
-                    rule_index = pattern.find("rule_", search_start)
-                    search_start = rule_index + 1
-                    P_graph.graph['rule'].append(data_dependent_rules[pattern[:rule_index + 6]])
+                rules_lists = self.extract_rules(pattern)
+                for rule in rules_lists:
+                    P_graph.graph['rule'].append(data_dependent_rules[rule])
+                # search_start = 0
+                # for r in range(rules_number):
+                #     rule_index = pattern.find("rule_", search_start)
+                #     search_start = rule_index + 1
+                #     P_graph.graph['rule'].append(data_dependent_rules[pattern[:rule_index + 6]])
 
                 pickle.dump(P_graph, open(self.save_path + '/%s.pickle' % pattern, "wb"))
                 plot_only_pattern(All_extended_patterns_dict, pattern, self.color_act_dict, self.save_path)

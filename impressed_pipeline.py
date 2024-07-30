@@ -14,7 +14,7 @@ from nirdizati_light.explanation.wrappers.dice_impressed import model_discovery
 from nirdizati_light.pattern_discovery.common import discovery
 from nirdizati_light.hyperparameter_optimisation.common import retrieve_best_model, HyperoptTarget
 from nirdizati_light.labeling.common import LabelTypes
-from nirdizati_light.log.common import get_log, import_log_csv
+from nirdizati_light.log.common import get_log,import_log_csv
 from nirdizati_light.predictive_model.common import ClassificationMethods, get_tensor
 from nirdizati_light.predictive_model.predictive_model import PredictiveModel, drop_columns
 import random
@@ -28,11 +28,9 @@ from sklearn import tree
 from nirdizati_light.pattern_discovery.utils.Alignment_Check import alignment_check
 import itertools
 import shutil
-
 logger = logging.getLogger(__name__)
 warnings.filterwarnings("ignore", category=UserWarning)
 import category_encoders as ce
-
 
 def dict_mean(dict_list):
     mean_dict = {}
@@ -44,7 +42,7 @@ def dict_mean(dict_list):
 def run_simple_pipeline(CONF=None, dataset_name=None):
     random.seed(CONF['seed'])
     np.random.seed(CONF['seed'])
-    dataset = CONF['data'].rpartition('/')[0].replace('datasets/', '')
+    dataset = CONF['data'].rpartition('/')[0].replace('datasets/','')
 
     dataset_confs = DatasetConfs(dataset_name=dataset, where_is_the_file=CONF['data'])
 
@@ -62,22 +60,18 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
     if train_size + val_size + test_size != 1.0:
         raise Exception('Train-val-test split does not sum up to 1')
 
-    train_df, val_df, test_df = np.split(full_df,
-                                         [int(train_size * len(full_df)), int((train_size + val_size) * len(full_df))])
+    train_df,val_df,test_df = np.split(full_df,[int(train_size*len(full_df)), int((train_size+val_size)*len(full_df))])
 
     encoder.decode(full_df)
     enc_ohe = ce.one_hot.OneHotEncoder(
-        cols=list(itertools.chain.from_iterable([*dataset_confs.static_cat_cols.values()])), use_cat_names=True)
+        cols=list(itertools.chain.from_iterable([*dataset_confs.static_cat_cols.values()])),use_cat_names=True)
     enc_ohe.fit(full_df)
     encoder.encode(full_df)
 
     log_conf = CONF.copy()
     log_conf['feature_selection'] = EncodingType.COMPLEX.value
     complex_encoder, full_df_timestamps = get_encoded_df(log=log, CONF=log_conf)
-    train_df_alignment, val_df_alignment, test_df_alignment = np.split(full_df_timestamps,
-                                                                       [int(train_size * len(full_df_timestamps)),
-                                                                        int((train_size + val_size) * len(
-                                                                            full_df_timestamps))])
+    train_df_alignment,val_df_alignment,test_df_alignment = np.split(full_df_timestamps,[int(train_size*len(full_df_timestamps)), int((train_size+val_size)*len(full_df_timestamps))])
 
     complex_encoder.decode(full_df_timestamps)
     complex_encoder.decode(test_df_alignment)
@@ -88,7 +82,7 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
             predictive_model,
             CONF['predictive_model'],
             max_evaluations=CONF['hyperparameter_optimisation_epochs'],
-            target=CONF['hyperparameter_optimisation_target'], seed=CONF['seed']
+            target=CONF['hyperparameter_optimisation_target'],seed=CONF['seed']
         )
     logger.debug('EVALUATE PREDICTIVE MODEL')
     if predictive_model.model_type is ClassificationMethods.LSTM.value:
@@ -128,20 +122,19 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
         else:
             dynamic_cols = [*dataset_confs.activity_col.values()] + [timestamp]
 
-        for x in range(len(test_df_correct.iloc[:50, :])):
+        for x in range(len(test_df_correct.iloc[:50,:])):
             query_instance = test_df_correct.iloc[x, :].to_frame().T
             case_id = query_instance.iloc[0, 0]
             query_instance = query_instance.drop(columns=['trace_id'])
             if CONF['feature_selection'] == EncodingType.SIMPLE_TRACE.value:
-                output_path = 'results/simple_trace_depdendent_results_3_objectives/'
-                #output_path = 'results/simple_trace_dependent_results_4_objectives/'
+                output_path = 'results/simple_trace_results_3_objectives/'
+                #output_path = 'results/simple_trace_results_4_objectives/'
             elif CONF['feature_selection'] == EncodingType.COMPLEX.value:
-                output_path = 'results/complex_results_3_objectives/'
-                #output_path = 'results/complex_results_4_objectives/'
+                #output_path = 'results/complex_results_3_objectives/'
+                output_path = 'results/complex_results_4_objectives/'
             if not os.path.exists(output_path):
                 os.makedirs(output_path)
-            discovery_path = output_path + '%s_discovery_%s_%s_%s' % (
-            dataset, impressed_pipeline, CONF['seed'], case_id)
+            discovery_path= output_path+'%s_discovery_%s_%s_%s' % (dataset, impressed_pipeline,CONF['seed'],case_id)
 
             columns = drop_columns(train_df).columns
             features_to_vary = [column for column in columns if 'Timestamp' not in column]
@@ -150,25 +143,23 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
 
             timestamps = [col for col in full_df_timestamps.iloc[query_instance.index].columns if 'timestamp' in col]
             if len(timestamps) == 0:
-                timestamps = [col for col in full_df_timestamps.iloc[query_instance.index].columns if
-                              'Timestamp' in col]
+                timestamps = [col for col in full_df_timestamps.iloc[query_instance.index].columns if 'Timestamp' in col]
             df = full_df_timestamps.loc[query_instance.index][timestamps].reset_index()
-            timestamps_query = pd.DataFrame(np.repeat(df.values, neighborhood_size * 2, axis=0))
+            timestamps_query = pd.DataFrame(np.repeat(df.values, neighborhood_size*2, axis=0))
             timestamps_query.columns = df.columns
             timestamps_query.drop(columns=['index'], inplace=True)
             time_start = datetime.now()
-            synth_log, x_eval, label_list = explain(CONF, predictive_model, encoder=encoder, cf_df=full_df.iloc[:, 1:],
-                                                    query_instance=query_instance,
-                                                    method=method, optimization=optimization,
-                                                    timestamp_col_name=timestamp,
-                                                    model_path=model_path, random_seed=CONF['seed'],
-                                                    neighborhood_size=neighborhood_size
-                                                    , sparsity_weight=sparsity,
-                                                    diversity_weight=diversity, proximity_weight=proximity,
-                                                    features_to_vary=features_to_vary,
-                                                    impressed_pipeline=impressed_pipeline,
-                                                    dynamic_cols=dynamic_cols, timestamps=timestamps_query)
+            synth_log,x_eval,label_list = explain(CONF, predictive_model, encoder=encoder, cf_df=full_df.iloc[:, 1:],
+                           query_instance=query_instance,
+                           method=method, optimization=optimization,
+                           timestamp_col_name=timestamp,
+                           model_path=model_path,random_seed=CONF['seed'],
+                           neighborhood_size=neighborhood_size
+                    ,sparsity_weight=sparsity,
+                    diversity_weight=diversity,proximity_weight=proximity,features_to_vary=features_to_vary,impressed_pipeline=impressed_pipeline,
+                                dynamic_cols=dynamic_cols,timestamps=timestamps_query)
             time_cf = (datetime.now() - time_start).total_seconds()
+
 
             logger.debug('RUN IMPRESSED DISCOVERY AND DECISION TREE PIPELINE')
             if impressed_pipeline:
@@ -190,17 +181,15 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                 pattern_extension_strategy = 'activities'  # 'activities', 'attributes'
                 aggregation_style = 'all'  # 'all', 'none', 'pareto', 'mix
                 frequency_type = 'relative'  # 'absolute', 'relative'
-                distance_style = 'all'  # 'case' or 'all'
+                distance_style = 'all'                # 'case' or 'all'
                 data_dependency = 'dependent'
                 time_start = datetime.now()
-                trace_encoding =  CONF['feature_selection']
-                train_X, test_X = discovery(discovery_algorithm, synth_log, discovery_path, discovery_type, case_id_col,
-                                            activity, timestamp, outcome,
-                                            outcome_type, delta_time,
-                                            max_gap, max_extension_step, factual_outcome, likelihood, encoding,
-                                            testing_percentage, extension_style, data_dependency,
-                                            model, pattern_extension_strategy, aggregation_style, frequency_type,
-                                            distance_style, trace_encoding)
+
+                train_X, test_X = discovery(discovery_algorithm, synth_log, discovery_path, discovery_type, case_id_col, activity, timestamp, outcome,
+                          outcome_type, delta_time,
+                          max_gap, max_extension_step, factual_outcome, likelihood, encoding,testing_percentage,extension_style, data_dependency,
+                                                      model, pattern_extension_strategy, aggregation_style, frequency_type, distance_style)
+
 
                 '''
                 pareto_patterns = pd.read_csv(discovery_path + '/paretoset.csv')
@@ -217,7 +206,7 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                         pareto_patterns['activities'].iloc[idx] = split_string
                 except:
                     'Error in splitting'
-
+                
                 dict_values = {key: str(value) for key, value in
                                zip(pareto_patterns['patterns'], pareto_patterns['activities'])}
 
@@ -225,9 +214,9 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                 test_X = test_X.rename(columns=dict_values)
                 '''
                 if 'BPIC17' in dataset:
-                    synth_log['case:label'].replace({0: 'deviant', 1: 'regular'}, inplace=True)
+                    synth_log['case:label'].replace({0: 'deviant', 1:'regular'}, inplace=True)
                 else:
-                    synth_log['case:label'].replace({0: 'false', 1: 'true'}, inplace=True)
+                    synth_log['case:label'].replace({0:'false', 1:'true'}, inplace=True)
                 time_discovery = (datetime.now() - time_start).total_seconds()
 
                 train_X = train_X.rename(columns={'Case_ID': 'trace_id', 'Outcome': 'label'})
@@ -249,15 +238,15 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                     )
                 glass_box_result = evaluate_classifier(test_X['label'], glass_box.model.predict(
                     np.array(drop_columns(test_X))),
-                                                       glass_box.model.predict_proba(np.array(drop_columns(test_X))))
+                    glass_box.model.predict_proba(np.array(drop_columns(test_X))))
                 local_fidelity = glass_box_result['accuracy']
-                print('Local fidelity', local_fidelity)
+                print('Local fidelity',local_fidelity)
 
                 logger.debug("EVALUATE GLOBAL GLASS-BOX MODEL")
                 encoder.decode(test_df)
-                # test_df_dummy = enc_ohe.transform(test_df)
-                # test_df_dummy_subset = test_df_dummy.drop(columns=[col for col in test_df_dummy.columns if 'prefix' in col]+['label'])
-                # test_log_df = pd.wide_to_long(test_df_alignment, stubnames=['prefix', timestamp], i='trace_id',
+                #test_df_dummy = enc_ohe.transform(test_df)
+                #test_df_dummy_subset = test_df_dummy.drop(columns=[col for col in test_df_dummy.columns if 'prefix' in col]+['label'])
+                #test_log_df = pd.wide_to_long(test_df_alignment, stubnames=['prefix', timestamp], i='trace_id',
                 #                              j='order', sep='_', suffix=r'\w+').reset_index()
 
                 start_time = datetime.now()
@@ -265,30 +254,26 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                                               j='order', sep='_', suffix=r'\w+').reset_index()
 
                 eventlog_graphs = pickle.load(open(discovery_path + '/EventLogGraph.pickle', 'rb'))
-                impressed_test_df = alignment_check(log_df=test_log_df, case_id='trace_id', timestamp=timestamp,
-                                                    activity='prefix',
-                                                    outcome='label', pattern_folder=discovery_path,
-                                                    delta_time=delta_time, )
+                impressed_test_df = alignment_check(log_df=test_log_df,case_id='trace_id',timestamp=timestamp,activity='prefix',
+                                                    outcome='label',pattern_folder=discovery_path,delta_time=delta_time,)
                 time_alignment = (datetime.now() - start_time).total_seconds()
 
                 impressed_test_df.drop(columns=[timestamp, 'prefix'], inplace=True)
-                # update_impressed_test_df = pd.merge(impressed_test_df, test_df_dummy_subset,
+                #update_impressed_test_df = pd.merge(impressed_test_df, test_df_dummy_subset,
                 #                                    on='trace_id', how='left')
 
                 impressed_test_df.dropna(inplace=True)
-                impressed_test_df = impressed_test_df.reindex(test_X.columns, axis=1)
+                impressed_test_df = impressed_test_df.reindex(test_X.columns,axis=1)
                 global_preds = glass_box.model.predict(drop_columns(impressed_test_df))
                 global_probs = glass_box.model.predict_proba(drop_columns(impressed_test_df))
                 encoder.encode(test_df)
                 predicted = predictive_model.model.predict(drop_columns(test_df))
                 pred_evaluate_glassbox = evaluate_classifier(predicted, global_preds.astype(int), global_probs)
                 real_evaluate_glassbox = evaluate_classifier(actual, global_preds.astype(int), global_probs)
-                global_fidelity = pred_evaluate_glassbox['accuracy'] if pred_evaluate_glassbox['accuracy'] > \
-                                                                        real_evaluate_glassbox['accuracy'] else \
-                real_evaluate_glassbox['accuracy']
+                global_fidelity = pred_evaluate_glassbox['accuracy'] if pred_evaluate_glassbox['accuracy'] > real_evaluate_glassbox['accuracy'] else real_evaluate_glassbox['accuracy']
                 print('Global fidelity', global_fidelity)
 
-                if (local_fidelity > 0.9) | (global_fidelity > 0.8):
+                if (local_fidelity > 0.9)  |  (global_fidelity > 0.8):
                     viz = dtreeviz.model(glass_box.model,
                                          drop_columns(train_X),
                                          train_X['label'],
@@ -299,13 +284,13 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                     v = viz.view(orientation="LR", scale=2, label_fontsize=5.5)
                     v.save(
                         output_path + 'decision_trees' + '/' + '%s_impressed_encoding_%s_%s_%s' % (
-                            dataset, case_id, CONF['prefix_length'], data_dependency) + '.svg')
+                            dataset, case_id, CONF['prefix_length'],data_dependency) + '.svg')
 
                 shutil.rmtree(discovery_path)
             else:
                 max_extension_step = 0
                 testing_percentage = 0.2
-                synth_log.drop(columns=['likelihood'], inplace=True)
+                synth_log.drop(columns=['likelihood'],inplace=True)
                 event_log_pred = pm4py.convert_to_event_log(synth_log)
                 cols = [*dataset_confs.static_cat_cols.values(), *dataset_confs.static_num_cols.values()]
                 to_remove = list(itertools.chain.from_iterable(cols))
@@ -319,20 +304,17 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                 frequency_conf = CONF.copy()
                 frequency_conf['feature_selection'] = EncodingType.FREQUENCY.value
                 frequency_encoder, frequency_full_df = get_encoded_df(log=log, CONF=frequency_conf)
-                _, synth_df = get_encoded_df(log=event_log_pred, CONF=frequency_conf, encoder=frequency_encoder)
-                _, synth_df_trace = get_encoded_df(log=event_log_pred, CONF=CONF, encoder=encoder)
+                _, synth_df = get_encoded_df(log=event_log_pred, CONF=frequency_conf,encoder=frequency_encoder)
+                _,synth_df_trace = get_encoded_df(log=event_log_pred, CONF=CONF,encoder=encoder)
                 encoder.decode(synth_df_trace)
                 synth_df_trace = enc_ohe.transform(synth_df_trace)
 
                 frequency_encoder.decode(synth_df)
-                synth_df_subset = synth_df_trace.drop(
-                    columns=[col for col in synth_df_trace.columns if 'prefix' in col] + ['label'])
+                synth_df_subset = synth_df_trace.drop(columns=[col for col in synth_df_trace.columns if 'prefix' in col]+['label'])
                 synth_df = pd.merge(synth_df_subset, synth_df, on='trace_id', how='left')
 
-                train, test = train_test_split(synth_df, test_size=testing_percentage, random_state=42,
-                                               stratify=synth_df['label'])
-                train_dt, val_dt = train_test_split(train, test_size=testing_percentage, random_state=42,
-                                                    stratify=train['label'])
+                train, test = train_test_split(synth_df, test_size=testing_percentage, random_state=42,stratify=synth_df['label'])
+                train_dt,val_dt = train_test_split(train, test_size=testing_percentage, random_state=42,stratify=train['label'])
                 DT_CONF = CONF.copy()
                 DT_CONF['predictive_model'] = ClassificationMethods.DT.value
                 DT_CONF['hyperparameter_optimisation_target'] = HyperoptTarget.F1.value
@@ -350,10 +332,9 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                         target=DT_CONF['hyperparameter_optimisation_target'], seed=DT_CONF['seed']
                     )
 
-                local_evaluate_glassbox = evaluate_classifier(test['label'],
-                                                              glass_box.model.predict(drop_columns(test)), scores)
+                local_evaluate_glassbox = evaluate_classifier(test['label'], glass_box.model.predict(drop_columns(test)), scores)
                 local_fidelity = local_evaluate_glassbox['accuracy']
-                print('Local fidelity', local_fidelity)
+                print('Local fidelity',local_fidelity)
 
                 time_discovery = 0
                 time_alignment = 0
@@ -364,10 +345,9 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                 test_df_subset = test_df.copy()
                 encoder.decode(test_df_subset)
                 test_df_subset = enc_ohe.transform(test_df_subset)
-                test_df_subset = test_df_subset.drop(
-                    columns=[col for col in test_df_subset.columns if 'prefix' in col] + ['label'])
-                original_test_df = pd.merge(test_df_subset, original_test_df, on='trace_id', how='left')
-                diff = set(synth_df.columns.tolist()) - set(original_test_df.columns.tolist())
+                test_df_subset = test_df_subset.drop(columns=[col for col in test_df_subset.columns if 'prefix' in col]+['label'])
+                original_test_df = pd.merge(test_df_subset,original_test_df,on='trace_id',how='left')
+                diff=set(synth_df.columns.tolist()) - set(original_test_df.columns.tolist())
                 original_test_df[list(diff)] = 0
                 original_test_df = original_test_df[drop_columns(test).columns]
                 global_preds = glass_box.model.predict(original_test_df)
@@ -377,7 +357,7 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                 global_fidelity = global_evaluate_glassbox['accuracy']
                 print('Global fidelity', global_fidelity)
 
-                if (local_fidelity > 0.9) | (global_fidelity > 0.8):
+                if (local_fidelity > 0.9)  | (global_fidelity > 0.8):
                     viz = dtreeviz.model(glass_box.model,
                                          drop_columns(train),
                                          train['label'],
@@ -389,6 +369,8 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                     v.save(
                         output_path + '/decision_trees' + '/' + '%s_baseline_%s_%s' % (
                             dataset, case_id, CONF['prefix_length']) + '.svg')
+
+
 
             logger.info('RESULT')
             logger.info('INITIAL', initial_result)
@@ -410,7 +392,7 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
             x_eval['impressed_pipeline'] = impressed_pipeline
             x_eval['extension_step'] = max_extension_step
             x_eval['seed'] = CONF['seed']
-            results['pattern_extension_strategy'] = pattern_extension_strategy
+            results['pattern_extension_strategy'] =pattern_extension_strategy
             results['aggregation_style'] = aggregation_style
             results['frequency_type'] = frequency_type
             results['distance_style'] = distance_style
@@ -421,7 +403,7 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
             except:
                 results['number_of_patterns'] = 0
                 results['extension_style'] = extension_style
-                # results['pareto_only'] = False
+                #results['pareto_only'] = False
             results['extension_step'] = max_extension_step
             results['seed'] = CONF['seed']
             res_df = pd.DataFrame(results, index=[0])
@@ -445,24 +427,23 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                 x_eval.to_csv(filename_results, index=False)
             else:
                 x_eval.to_csv(filename_results, mode='a', index=False, header=False)
-            print(dataset, 'impressed_pipeline', impressed_pipeline,
-                  'LOCAL FIDELITY', local_fidelity, 'GLOBAL FIDELITY', global_fidelity, 'time_discovery',
-                  time_discovery, 'time_cf', time_cf,
-                  'time_alignment', time_alignment, 'neighborhood_size', neighborhood_size, 'number_of_patterns')
+            print(dataset,'impressed_pipeline',impressed_pipeline,
+                    'LOCAL FIDELITY',local_fidelity, 'GLOBAL FIDELITY', global_fidelity,'time_discovery',time_discovery,'time_cf',time_cf,
+                  'time_alignment',time_alignment,'neighborhood_size',neighborhood_size,'number_of_patterns')
 
 
 if __name__ == '__main__':
     dataset_list = {
-        # 'synthetic_data': [3, 5, 7, 9],
-        'bpic2012_O_ACCEPTED-COMPLETE': [20, 25, 30, 35],
-        # 'bpic2012_O_CANCELLED-COMPLETE':[20,25,30,35],
-        # 'bpic2012_O_DECLINED-COMPLETE':[20,25,30,35],
-        # 'sepsis_cases_1':[13],
-        # 'sepsis_cases_2':[5,9,13,16],
-        # 'sepsis_cases_4':[5,9,13,16],
-        # 'BPIC17_O_ACCEPTED':[15,20,25,30],
-        # 'BPIC17_O_CANCELLED':[15,20,25,30],
-        # 'BPIC17_O_REFUSED':[15,20,25,30],
+        #'synthetic_data': [3, 5, 7, 9],
+        'bpic2012_O_ACCEPTED-COMPLETE':[20,25,30,35],
+        #'bpic2012_O_CANCELLED-COMPLETE':[20,25,30,35],
+        #'bpic2012_O_DECLINED-COMPLETE':[20,25,30,35],
+         #'sepsis_cases_1':[13],
+         #'sepsis_cases_2':[5,9,13,16],
+        #'sepsis_cases_4':[5,9,13,16],
+         #'BPIC17_O_ACCEPTED':[15,20,25,30],
+       #'BPIC17_O_CANCELLED':[15,20,25,30],
+       #'BPIC17_O_REFUSED':[15,20,25,30],
 
     }
     pipelines = [True]
@@ -475,9 +456,9 @@ if __name__ == '__main__':
                     seed = 56
                 else:
                     seed = 48
-                print(os.path.join('datasets', dataset, 'full.xes'))
+                print(os.path.join('datasets',dataset, 'full.xes'))
                 CONF = {
-                    'data': os.path.join('datasets', dataset, 'full.xes'),
+                    'data': os.path.join('datasets',dataset, 'full.xes'),
                     'train_val_test_split': [0.7, 0.15, 0.15],
                     'output': os.path.join('..', 'output_data'),
                     'prefix_length_strategy': PrefixLengthStrategy.FIXED.value,

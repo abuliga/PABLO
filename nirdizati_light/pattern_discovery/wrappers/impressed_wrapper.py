@@ -20,7 +20,7 @@ import itertools
 
 def impressed_wrapper(df,output_path,discovery_type,case_id,activity,timestamp,outcome,outcome_type,delta_time,
                       max_gap,max_extension_step,factual_outcome,likelihood,encoding,testing_percentage,extension_style,data_dependency,
-    model,pattern_extension_strategy,aggregation_style,frequency_type, distance_style):
+    model,pattern_extension_strategy,aggregation_style,frequency_type, distance_style,trace_encoding):
     # Load the log
     if not os.path.exists(output_path):
         os.makedirs(output_path)
@@ -40,12 +40,12 @@ def impressed_wrapper(df,output_path,discovery_type,case_id,activity,timestamp,o
     df[activity] = df[activity].astype('string')
     df[activity] = df[activity].str.replace("_", "")
     df[activity] = df[activity].str.replace("-", "")
-    df.columns = df.columns.str.replace("_", "")
-    df.columns = df.columns.str.replace("-", "")
-    df.columns = df.columns.str.replace(" ", "")
-    timestamp = timestamp.replace("_", "")
-    timestamp = timestamp.replace("-", "")
-    timestamp = timestamp.replace(" ", "")
+   # df.columns = df.columns.str.replace("_", "")
+   # df.columns = df.columns.str.replace("-", "")
+   # df.columns = df.columns.str.replace(" ", "")
+    #timestamp = timestamp.replace("_", "")
+    #timestamp = timestamp.replace("-", "")
+    #timestamp = timestamp.replace(" ", "")
     try:
         df[timestamp] = pd.to_datetime(df[timestamp])
     except:
@@ -150,7 +150,10 @@ def impressed_wrapper(df,output_path,discovery_type,case_id,activity,timestamp,o
         for pattern_name in list(Patterns_Dictionary.keys()):
             Pattern = Patterns_Dictionary[pattern_name]['pattern']
             patient_data[pattern_name] = 0
-            patient_data = Alignment_Check.check_pattern_alignment(EventLog_graphs, patient_data, Pattern, pattern_name)
+            if trace_encoding == 'complex':
+                patient_data = Alignment_Check.check_pattern_alignment(EventLog_graphs, patient_data, Pattern, pattern_name)
+            elif trace_encoding == 'simple_trace':
+                patient_data = Alignment_Check.check_pattern_alignment_simple_trace(EventLog_graphs, patient_data, Pattern, pattern_name)
 
         pattern_attributes = create_pattern_attributes(patient_data, outcome,
                                                        factual_outcome, list(Patterns_Dictionary.keys()), outcome_type)
@@ -203,7 +206,12 @@ def impressed_wrapper(df,output_path,discovery_type,case_id,activity,timestamp,o
             for pattern_name in Patterns_Dictionary.keys():
                 Pattern = Patterns_Dictionary[pattern_name]['pattern']
                 patient_data[pattern_name] = 0
-                patient_data = Alignment_Check.check_pattern_alignment(EventLog_graphs, patient_data, Pattern, pattern_name)
+                if trace_encoding == 'complex':
+                    patient_data = Alignment_Check.check_pattern_alignment(EventLog_graphs, patient_data, Pattern,
+                                                                           pattern_name)
+                elif trace_encoding == 'simple_trace':
+                    patient_data = Alignment_Check.check_pattern_alignment_simple_trace(EventLog_graphs, patient_data,
+                                                                                        Pattern, pattern_name)
 
             pattern_attributes = create_pattern_attributes(patient_data, outcome,
                                                            factual_outcome, list(Patterns_Dictionary.keys()),

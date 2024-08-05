@@ -186,7 +186,9 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                 time_start = datetime.now()
                 trace_encoding =  CONF['feature_selection']
                 nr_of_objectives = 4
-                discovery_path = output_path + '%s_discovery_%s_%s_%s_%s' % (dataset, impressed_pipeline, CONF['seed'],case_id,data_dependency)
+                discovery_path = output_path + '%s_discovery_%s_%s_%s_%s_%s_objectives' % (dataset, impressed_pipeline,
+                                                                                           CONF['seed'],case_id,
+                                                                                           data_dependency, nr_of_objectives)
                 train_X, test_X = discovery(discovery_algorithm, synth_log, discovery_path, discovery_type, case_id_col,
                                             activity, timestamp, outcome,
                                             outcome_type, delta_time,
@@ -388,6 +390,7 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                 # results['pareto_only'] = False
             results['extension_step'] = max_extension_step
             results['seed'] = CONF['seed']
+            results['nr_of_objectives'] = nr_of_objectives
             res_df = pd.DataFrame(results, index=[0])
 
             if not os.path.isfile(output_path + '%s_results_impressed.csv' % (dataset)):

@@ -21,7 +21,7 @@ class DatasetConfs:
             self.dynamic_num_cols = {dataset: ["expense", "timesincelastevent", "timesincecasestart", "timesincemidnight", "event_nr",
                                          "month", "weekday", "hour", "open_cases"]}
             self.static_num_cols = {dataset: ["amount", "points"]}
-        elif dataset_name in ["sepsis_cases_1","sepsis_cases_2","sepsis_cases_3","sepsis_cases_4","sepsis_cases_5"]:
+        elif dataset_name in ["sepsis_cases_1","sepsis_cases_2","sepsis_cases_3","sepsis_cases_4","sepsis_cases_5","sepsis"]:
             #### Sepsis Cases settings ####
             dataset = dataset_name
             if where_is_the_file != '':
@@ -29,27 +29,26 @@ class DatasetConfs:
             else:
                 self.filename = {dataset:''}
 
-            self.case_id_col = {dataset: "Case ID"}
-            self.activity_col = {dataset: "Activity"}
+            self.case_id_col = {dataset: "case:concept:name"}
+            self.activity_col = {dataset: "concept:name"}
             self.resource_col = {dataset: "org:group"}
             self.timestamp_col = {dataset: "time:timestamp"}
-            self.label_col = {dataset: "label"}
-            self.pos_label = {dataset: "deviant"}
-            self.neg_label = {dataset: "regular"}
+            self.label_col = {dataset: "case:label"}
+            self.pos_label = {dataset: False}
+            self.neg_label = {dataset: True}
 
             # features for classifier
             self.dynamic_cat_cols = {dataset: ["org:group"]}  # i.e. event attributes
-            self.static_cat_cols = {dataset: ['Diagnose', 'DiagnosticArtAstrup', 'DiagnosticBlood', 'DiagnosticECG',
-                                        'DiagnosticIC', 'DiagnosticLacticAcid', 'DiagnosticLiquor',
-                                        'DiagnosticOther', 'DiagnosticSputum', 'DiagnosticUrinaryCulture',
-                                        'DiagnosticUrinarySediment', 'DiagnosticXthorax', 'DisfuncOrg',
-                                        'Hypotensie', 'Hypoxie', 'InfectionSuspected', 'Infusion', 'Oligurie',
-                                        'SIRSCritHeartRate', 'SIRSCritLeucos', 'SIRSCritTachypnea',
-                                        'SIRSCritTemperature',
-                                        'SIRSCriteria2OrMore'] } # i.e. case attributes that are known from the start
-            self.dynamic_num_cols = {dataset: ["timesincemidnight",
-                                         "timesincelastevent", "timesincecasestart", "event_nr", "open_cases","Leucocytes","CRP","LacticAcid","month", "weekday", "hour"]}
-            self.static_num_cols = {dataset: ['Age']}
+            self.static_cat_cols = {dataset: ['case:Diagnose', 'case:DiagnosticArtAstrup', 'case:DiagnosticBlood', 'case:DiagnosticECG',
+                                        'case:DiagnosticIC', 'case:DiagnosticLacticAcid', 'case:DiagnosticLiquor',
+                                        'case:DiagnosticOther', 'case:DiagnosticSputum', 'case:DiagnosticUrinaryCulture',
+                                        'case:DiagnosticUrinarySediment', 'case:DiagnosticXthorax', 'case:DisfuncOrg',
+                                        'case:Hypotensie', 'case:Hypoxie', 'case:InfectionSuspected', 'case:Infusion', 'case:Oligurie',
+                                        'case:SIRSCritHeartRate', 'case:SIRSCritLeucos', 'case:SIRSCritTachypnea',
+                                        'case:SIRSCritTemperature',
+                                        'case:SIRSCriteria2OrMore'] } # i.e. case attributes that are known from the start
+            self.dynamic_num_cols = {dataset: ["timesincelastevent","Leucocytes","CRP","LacticAcid"]} # ,"month", "weekday", "hour" , "timesincecasestart", "event_nr", "open_cases" , "timesincemidnight",
+            self.static_num_cols = {dataset: ['case:Age']}
         elif dataset_name is "Production":
             #### Production log settings ####
             dataset = dataset_name

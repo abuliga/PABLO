@@ -49,7 +49,7 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
     dataset_confs = DatasetConfs(dataset_name=dataset, where_is_the_file=CONF['data'])
 
     logger.debug('LOAD DATA')
-    log = get_log(filepath=CONF['data'])
+    log = get_log(filepath=CONF['data'],dataset_confs=dataset_confs)
     logger.debug('Update EVENT ATTRIBUTES')
 
     logger.debug('ENCODE DATA')
@@ -136,13 +136,15 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
             case_id = query_instance.iloc[0, 0]
             query_instance = query_instance.drop(columns=['trace_id'])
             if CONF['feature_selection'] == EncodingType.SIMPLE_TRACE.value:
-                output_path = 'results/simple_trace_results/'
+                output_path = 'results/simple_trace_results_3_objectives/'
                 #output_path = 'results/simple_trace_results_4_objectives/'
             elif CONF['feature_selection'] == EncodingType.COMPLEX.value:
-                output_path = 'results/complex_results/'
+                output_path = 'results/complex_results_3_objectives/'
                 #output_path = 'results/complex_results_4_objectives/'
             if not os.path.exists(output_path):
                 os.makedirs(output_path)
+            discovery_path = output_path + '%s_discovery_%s_%s_%s' % (
+            dataset, impressed_pipeline, CONF['seed'], case_id)
 
             columns = drop_columns(train_df).columns
             features_to_vary = [column for column in columns if 'Timestamp' not in column]
@@ -195,10 +197,7 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                 data_dependency = 'independent'
                 time_start = datetime.now()
                 trace_encoding = CONF['feature_selection']
-                nr_of_objectives = 3
-                discovery_path = output_path + '%s_discovery_%s_%s_%s_%s_%s_objectives' % (dataset, impressed_pipeline,
-                                                                                           CONF['seed'],case_id,
-                                                                                           data_dependency, nr_of_objectives)
+                only_event_attributes = False
 
                 train_X, test_X = discovery(discovery_algorithm, synth_log, discovery_path, discovery_type, case_id_col,
                                             activity, timestamp, outcome,
@@ -206,7 +205,7 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                                             max_gap, max_extension_step, factual_outcome, likelihood, encoding,
                                             testing_percentage, extension_style, data_dependency,
                                             model, pattern_extension_strategy, aggregation_style, frequency_type,
-                                            distance_style, trace_encoding, nr_of_objectives)
+                                            distance_style, trace_encoding, only_event_attributes)
                 test_ids = test_X['Case_ID'].unique()
                 if 'BPIC17' in dataset:
                     synth_log['case:label'].replace({0: 'deviant', 1: 'regular'}, inplace=True)
@@ -435,7 +434,6 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                 # results['pareto_only'] = False
             results['extension_step'] = max_extension_step
             results['seed'] = CONF['seed']
-            results['nr_of_objectives'] = nr_of_objectives
             res_df = pd.DataFrame(results, index=[0])
 
             if not os.path.isfile(output_path + '%s_results_impressed.csv' % (dataset)):
@@ -466,10 +464,10 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
 if __name__ == '__main__':
     dataset_list = {
         # 'synthetic_data': [3, 5, 7, 9],
-        #'bpic2012_O_ACCEPTED-COMPLETE': [20,25,30,35],
+        'bpic2012_O_ACCEPTED-COMPLETE': [20,25,30,35],
         # 'bpic2012_O_CANCELLED-COMPLETE':[20,25,30,35],
         # 'bpic2012_O_DECLINED-COMPLETE':[20,25,30,35],
-         'sepsis_cases_1':[7,9,13,16],
+        # 'sepsis_cases_1':[13],
         # 'sepsis_cases_2':[5,9,13,16],
         # 'sepsis_cases_4':[5,9,13,16],
         # 'BPIC17_O_ACCEPTED':[15,20,25,30],

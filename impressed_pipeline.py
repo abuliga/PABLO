@@ -47,7 +47,7 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
     dataset_confs = DatasetConfs(dataset_name=dataset, where_is_the_file=CONF['data'])
 
     logger.debug('LOAD DATA')
-    log = get_log(filepath=CONF['data'])
+    log = get_log(filepath=CONF['data'], dataset_confs=dataset_confs)
     logger.debug('Update EVENT ATTRIBUTES')
 
     logger.debug('ENCODE DATA')
@@ -127,11 +127,11 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
             case_id = query_instance.iloc[0, 0]
             query_instance = query_instance.drop(columns=['trace_id'])
             if CONF['feature_selection'] == EncodingType.SIMPLE_TRACE.value:
-                #output_path = 'results/simple_trace_results_3_objectives/'
-                output_path = 'results/simple_trace/'
+                output_path = 'results/simple_trace_results_3_objectives/'
+                #output_path = 'results/simple_trace_results_4_objectives/'
             elif CONF['feature_selection'] == EncodingType.COMPLEX.value:
                 #output_path = 'results/complex_results_3_objectives/'
-                output_path = 'results/complex_results/'
+                output_path = 'results/complex_results_4_objectives/'
             if not os.path.exists(output_path):
                 os.makedirs(output_path)
             discovery_path= output_path+'%s_discovery_%s_%s_%s' % (dataset, impressed_pipeline,CONF['seed'],case_id)
@@ -182,21 +182,40 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                 aggregation_style = 'all'  # 'all', 'none', 'pareto', 'mix
                 frequency_type = 'relative'  # 'absolute', 'relative'
                 distance_style = 'all'                # 'case' or 'all'
-                data_dependency = 'independent'
+                data_dependency = 'dependent'
                 time_start = datetime.now()
                 trace_encoding =  CONF['feature_selection']
-                nr_of_objectives = 4
-                discovery_path = output_path + '%s_discovery_%s_%s_%s_%s_%s_objectives' % (dataset, impressed_pipeline,
-                                                                                           CONF['seed'],case_id,
-                                                                                           data_dependency, nr_of_objectives)
+                only_event_attributes = False
                 train_X, test_X = discovery(discovery_algorithm, synth_log, discovery_path, discovery_type, case_id_col,
                                             activity, timestamp, outcome,
                                             outcome_type, delta_time,
                                             max_gap, max_extension_step, factual_outcome, likelihood, encoding,
                                             testing_percentage, extension_style, data_dependency,
                                             model, pattern_extension_strategy, aggregation_style, frequency_type,
-                                            distance_style, trace_encoding, nr_of_objectives)
+                                            distance_style, trace_encoding, only_event_attributes)
 
+                '''
+                pareto_patterns = pd.read_csv(discovery_path + '/paretoset.csv')
+
+                pareto_patterns['activities'] = pareto_patterns['activities'].str.replace('False',
+                                                                                          'directly follows')
+                pareto_patterns['activities'] = pareto_patterns['activities'].str.replace('True',
+                                                                                          'eventually follows')
+                try:
+                    for idx in range(len(pareto_patterns['activities'])):
+                        item = pareto_patterns['activities'].iloc[idx]
+                        split_string = item.strip('[').strip(']').strip("'").strip(",").split(',')
+                        split_string = split_string[0] + split_string[2].strip(']').strip('follows') +'\n' + split_string[1]
+                        pareto_patterns['activities'].iloc[idx] = split_string
+                except:
+                    'Error in splitting'
+                
+                dict_values = {key: str(value) for key, value in
+                               zip(pareto_patterns['patterns'], pareto_patterns['activities'])}
+
+                train_X = train_X.rename(columns=dict_values)
+                test_X = test_X.rename(columns=dict_values)
+                '''
                 if 'BPIC17' in dataset:
                     synth_log['case:label'].replace({0: 'deviant', 1:'regular'}, inplace=True)
                 else:
@@ -390,7 +409,6 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                 # results['pareto_only'] = False
             results['extension_step'] = max_extension_step
             results['seed'] = CONF['seed']
-            results['nr_of_objectives'] = nr_of_objectives
             res_df = pd.DataFrame(results, index=[0])
 
             if not os.path.isfile(output_path + '%s_results_impressed.csv' % (dataset)):
@@ -423,7 +441,7 @@ if __name__ == '__main__':
         'bpic2012_O_ACCEPTED-COMPLETE':[20,25,30,35],
         #'bpic2012_O_CANCELLED-COMPLETE':[20,25,30,35],
         #'bpic2012_O_DECLINED-COMPLETE':[20,25,30,35],
-        #'sepsis_cases_1':[7,9,13,16],
+         #'sepsis_cases_1':[13],
          #'sepsis_cases_2':[5,9,13,16],
         #'sepsis_cases_4':[5,9,13,16],
          #'BPIC17_O_ACCEPTED':[15,20,25,30],
@@ -449,7 +467,7 @@ if __name__ == '__main__':
                     'prefix_length_strategy': PrefixLengthStrategy.FIXED.value,
                     'prefix_length': prefix_length,
                     'padding': True,  # TODO, why use of padding?
-                    'feature_selection': EncodingType.SIMPLE_TRACE.value,
+                    'feature_selection': EncodingType.COMPLEX.value,
                     'task_generation_type': TaskGenerationType.ONLY_THIS.value,
                     'attribute_encoding': EncodingTypeAttribute.LABEL.value,  # LABEL, ONEHOT
                     'labeling_type': LabelTypes.ATTRIBUTE_STRING.value,

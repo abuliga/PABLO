@@ -369,24 +369,26 @@ class Alignment_Checker:
             # add a new row to DT_Case_Pattern for each pattern instance
             for instance in collected_indexes:
                 for ind in range(len(collected_indexes[instance])):
-                    pattern_instance = {self.case_id: case,
-                                        'act': nx.get_node_attributes(self.Trace_graph, 'value').values().mapping[
-                                            collected_indexes[instance][ind]], 'instance': instance}
                     # pattern_instance = {self.case_id: case,
-                    #                     'act': nx.get_node_attributes(self.Trace_graph, 'value')[
+                    #                     'act': nx.get_node_attributes(self.Trace_graph, 'value').values().mapping[
                     #                         collected_indexes[instance][ind]], 'instance': instance}
-                    event_features = nx.get_node_attributes(
-                        self.Trace_graph, 'event_data').values().mapping[collected_indexes[instance][ind]]
-
+                    pattern_instance = {self.case_id: case,
+                                        'act': nx.get_node_attributes(self.Trace_graph, 'value')[
+                                            collected_indexes[instance][ind]], 'instance': instance}
                     # event_features = nx.get_node_attributes(
-                    #     self.Trace_graph, 'event_data')[collected_indexes[instance][ind]]
+                    #     self.Trace_graph, 'event_data').values().mapping[collected_indexes[instance][ind]]
+
+                    event_features = nx.get_node_attributes(
+                        self.Trace_graph, 'event_data')[collected_indexes[instance][ind]]
                     for id, feature in enumerate(event_features):
                         pattern_instance["col%s" % id] = feature
 
                     dtime_total = 0
                     for idx in range(collected_indexes[instance][0], collected_indexes[instance][ind]):
                         try:
-                            dtime_total += nx.get_edge_attributes(self.Trace_graph, 'dtime').values().mapping[
+                            # dtime_total += nx.get_edge_attributes(self.Trace_graph, 'dtime').values().mapping[
+                            #                                 (idx, idx + 1)]
+                            dtime_total += nx.get_edge_attributes(self.Trace_graph, 'dtime')[
                                 (idx, idx + 1)]
                         except:
                             continue

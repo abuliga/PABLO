@@ -8,9 +8,10 @@ class PatternDiscoveryType(Enum):
 
 def discovery(discovery_algorithm,log,output_path,discovery_type,case_id,activity,timestamp,outcome,outcome_type,delta_time,
                       max_gap,max_extension_step,factual_outcome,likelihood,encoding,testing_percentage,extension_style, data_dependency,
-              model,pattern_extension_strategy,aggregation_style,frequency_type, distance_style,trace_encoding, nr_of_objectives):
+              model,pattern_extension_strategy,aggregation_style,frequency_type, distance_style,trace_encoding, only_event_attributes):
     if discovery_algorithm is PatternDiscoveryType.IMPRESSED.value:
         return impressed_wrapper(log,output_path,discovery_type,case_id,activity,timestamp,outcome,outcome_type,delta_time,
                       max_gap,max_extension_step,factual_outcome,likelihood,encoding,testing_percentage,extension_style,data_dependency,
-                                 model,pattern_extension_strategy,aggregation_style,frequency_type, distance_style,trace_encoding, nr_of_objectives)
+                                 model,pattern_extension_strategy,aggregation_style,
+                                 frequency_type, distance_style,trace_encoding, only_event_attributes)
    

@@ -152,11 +152,12 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                     encoding = True
                     discovery_algorithm = 'impressed'
                     pareto_only = True
+                    only_event_attributes = False
 
                     time_start = datetime.now()
                     train_X, test_X, test_ids = discovery(discovery_algorithm, synth_log, discovery_path, discovery_type, case_id_col, activity, timestamp, outcome,
                               outcome_type, delta_time,
-                              max_gap, max_extension_step, factual_outcome, likelihood, encoding,testing_percentage,pareto_only)
+                              max_gap, max_extension_step, factual_outcome, likelihood, encoding,testing_percentage,pareto_only, only_event_attributes)
                     synth_log.to_csv(discovery_path + '/synthetic_log_%s_%s.csv' % (dataset, case_id))
 
                     time_discovery = (datetime.now() - time_start).total_seconds()

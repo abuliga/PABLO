@@ -20,7 +20,7 @@ import itertools
 
 def impressed_wrapper(df,output_path,discovery_type,case_id,activity,timestamp,outcome,outcome_type,delta_time,
                       max_gap,max_extension_step,factual_outcome,likelihood,encoding,testing_percentage,extension_style,data_dependency,
-    model,pattern_extension_strategy,aggregation_style,frequency_type, distance_style, trace_encoding, nr_of_objectives):
+    model,pattern_extension_strategy,aggregation_style,frequency_type, distance_style,trace_encoding, only_event_attributes):
     # Load the log
     if not os.path.exists(output_path):
         os.makedirs(output_path)
@@ -33,13 +33,10 @@ def impressed_wrapper(df,output_path,discovery_type,case_id,activity,timestamp,o
     else:
         log_graph_exist = False
         EventLog_graphs = dict()
-    if nr_of_objectives == 3:
-        pareto_features = ['Outcome_Interest', 'Frequency_Interest', 'Case_Distance_Interest']
-        pareto_sense = ['max', 'max', 'min']
-    elif nr_of_objectives == 4:
-        pareto_features = ['Outcome_Interest', 'Frequency_Interest', 'likelihood', 'Case_Distance_Interest']
-        pareto_sense = ['max', 'max', 'max', 'min']
-
+    pareto_features = ['Outcome_Interest', 'Frequency_Interest', 'likelihood']
+    pareto_sense = ['max', 'max', 'max']
+    #pareto_features = ['Outcome_Interest', 'Frequency_Interest', 'likelihood', 'Case_Distance_Interest']
+    #pareto_sense = ['max', 'max', 'max', 'min']
     df[activity] = df[activity].astype('string')
     df[activity] = df[activity].str.replace("_", "")
     df[activity] = df[activity].str.replace("-", "")
@@ -271,7 +268,7 @@ def impressed_wrapper(df,output_path,discovery_type,case_id,activity,timestamp,o
                                              pareto_features, pareto_sense, delta_time,
                                              color_act_dict, output_path,
                                              factual_outcome, extension_style, data_dependency, aggregation_style,
-                                             pattern_extension_strategy, model, frequency_type, distance_style)
+                                             pattern_extension_strategy, model, frequency_type, distance_style, only_event_attributes)
 
         train_X, test_X = AutoDetection.AutoStepWise_PPD()
 

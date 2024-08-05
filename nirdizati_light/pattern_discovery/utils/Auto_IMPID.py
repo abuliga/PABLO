@@ -21,7 +21,7 @@ class AutoPatternDetection:
                  pareto_features, pareto_sense, d_time, color_act_dict,
                  save_path, factual_outcome, extension_style='Pareto', data_dependency=None,
                  aggregation_style="all", pattern_extension_strategy='activities', model='DT',
-                 frequency_type='absolute', distance_style='case'):
+                 frequency_type='absolute', distance_style='case', only_event_attributes=False):
 
         self.EventLog_graphs = EventLog_graphs
         self.frequency_type = frequency_type
@@ -75,13 +75,19 @@ class AutoPatternDetection:
                                                 set(self.Case_attributes_numerical)) - {self.outcome})
         self.agg_dict = {}
         self.agg_dict_only_case = {}
-        for col in self.Event_numerical_attributes:
-            self.agg_dict[col] = 'sum'
-        for col in self.Case_attributes:
-            self.agg_dict[col] = lambda x: x.mode()[0] if not x.mode().empty else None
-            self.agg_dict_only_case[col] = lambda x: x.mode()[0] if not x.mode().empty else None
-        for col in self.Event_categorical_attributes:
-            self.agg_dict[col] = lambda x: str(list(x))
+        if only_event_attributes:
+            for col in self.Event_numerical_attributes:
+                self.agg_dict[col] = 'sum'
+            for col in self.Event_categorical_attributes:
+                self.agg_dict[col] = lambda x: str(list(x))
+        else:
+            for col in self.Event_numerical_attributes:
+                self.agg_dict[col] = 'sum'
+            for col in self.Case_attributes:
+                self.agg_dict[col] = lambda x: x.mode()[0] if not x.mode().empty else None
+                self.agg_dict_only_case[col] = lambda x: x.mode()[0] if not x.mode().empty else None
+            for col in self.Event_categorical_attributes:
+                self.agg_dict[col] = lambda x: str(list(x))
 
         # aggregation for delta time between events of a pattern
         self.agg_dict['dtime'] = 'sum'

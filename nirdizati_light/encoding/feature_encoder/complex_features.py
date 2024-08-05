@@ -42,7 +42,7 @@ def _get_global_event_attributes(log):
     """
     # retrieves all events in the log and returns their intersection
     attributes = list(reduce(set.intersection, [set(event._dict.keys()) for trace in log for event in trace]))
-    event_attributes = [attr for attr in attributes if attr not in ["concept:name"]]
+    event_attributes = [attr for attr in attributes if attr not in ["concept:name" , "@@case_index", "@@index"]]
     return sorted(event_attributes)
 
 

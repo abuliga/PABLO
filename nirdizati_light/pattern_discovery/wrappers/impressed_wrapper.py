@@ -33,13 +33,14 @@ def impressed_wrapper(df,output_path,discovery_type,case_id,activity,timestamp,o
     else:
         log_graph_exist = False
         EventLog_graphs = dict()
-    pareto_features = ['Outcome_Interest', 'Frequency_Interest', 'likelihood']
-    pareto_sense = ['max', 'max', 'max']
+    pareto_features = ['Outcome_Interest', 'Frequency_Interest', 'likelihood', 'Case_Distance_Interest']
+    pareto_sense = ['max', 'max', 'max', 'min']
     #pareto_features = ['Outcome_Interest', 'Frequency_Interest', 'likelihood', 'Case_Distance_Interest']
     #pareto_sense = ['max', 'max', 'max', 'min']
     df[activity] = df[activity].astype('string')
     df[activity] = df[activity].str.replace("_", "")
     df[activity] = df[activity].str.replace("-", "")
+    df[activity] = df[activity].str.replace(".", "")
    # df.columns = df.columns.str.replace("_", "")
    # df.columns = df.columns.str.replace("-", "")
    # df.columns = df.columns.str.replace(" ", "")

@@ -80,6 +80,9 @@ class AutoPatternDetection:
                 self.agg_dict[col] = 'sum'
             for col in self.Event_categorical_attributes:
                 self.agg_dict[col] = lambda x: str(list(x))
+
+            self.agg_dict[self.outcome] = lambda x: x.mode()[0] if not x.mode().empty else None
+            self.agg_dict['likelihood'] = 'mean'
         else:
             for col in self.Event_numerical_attributes:
                 self.agg_dict[col] = 'sum'

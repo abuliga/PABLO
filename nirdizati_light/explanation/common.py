@@ -9,7 +9,7 @@ def explain(CONF, predictive_model, encoder, cf_df=None,
             method=None, optimization=None, support=0.9, timestamp_col_name=None,
             model_path=None,random_seed=None,query_instance=None,neighborhood_size=None,
             diversity_weight=None,sparsity_weight=None,proximity_weight=None,features_to_vary=None,
-            impressed_pipeline=None,dynamic_cols=None,timestamps=None):
+            impressed_pipeline=None,dynamic_cols=None,timestamps=None,adapted=None):
     explainer = CONF['explanator']
     if explainer is ExplainerType.DICE_IMPRESSED.value:
         return dice_impressed(CONF, predictive_model, encoder=encoder, cf_df=cf_df,
@@ -21,4 +21,4 @@ def explain(CONF, predictive_model, encoder, cf_df=None,
                               sparsity_weight=sparsity_weight, diversity_weight=diversity_weight
                               , proximity_weight=proximity_weight, features_to_vary=features_to_vary,
                               impressed_pipeline=impressed_pipeline,
-                              dynamic_cols=dynamic_cols, timestamps=timestamps)
+                              dynamic_cols=dynamic_cols, timestamps=timestamps,adapted=adapted)

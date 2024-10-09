@@ -11,7 +11,7 @@ import pickle
 import numpy as np
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 from sklearn.model_selection import train_test_split
-from sklearn.feature_selection import SelectFromModel
+from sklearn.feature_selection import SelectFromModel, RFECV
 from sklearn.tree import export_text
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from xgboost import XGBClassifier, XGBRegressor
@@ -285,7 +285,8 @@ class Alignment_Checker:
 
         return collected_indexes
 
-    def check_pattern_alignment(self, EventLog_graphs, patient_data, Pattern, pattern_name):
+    def check_pattern_alignment(self, EventLog_graphs, patient_data, selected_variants,
+                                Pattern, pattern_name):
         # create a dataframe for recording the time-dependent features
         DT_Case_Pattern = pd.DataFrame(columns=[self.case_id, 'act', 'instance', 'dtime'])
         # check the type of pattern
@@ -295,7 +296,8 @@ class Alignment_Checker:
         # sub_edges_values = [v for v in nx.get_edge_attributes(Pattern, 'eventually').values()]
         sub_nodes_value = [v for v in nx.get_node_attributes(Pattern, 'value').values()]
         pattern_length = len(sub_nodes_value)
-        for case in EventLog_graphs:
+        for case in selected_variants[self.case_id].unique():
+        # for case in EventLog_graphs:
             self.Trace_graph = EventLog_graphs[case].copy()
             trace_nodes_value = [v for v in nx.get_node_attributes(self.Trace_graph, 'value').values()]
             trace_node_value_exists = trace_nodes_value.copy()
@@ -365,38 +367,44 @@ class Alignment_Checker:
                         collected_indexes = final_collected_indexes.copy()
                         self.remove_empty_lists(collected_indexes)
 
-            patient_data.loc[patient_data[self.case_id] == case, pattern_name] = len(collected_indexes)
+            # patient_data.loc[patient_data[self.case_id] == case, pattern_name] = len(collected_indexes)
+            Other_cases = \
+                selected_variants.loc[selected_variants[self.case_id] == case, 'case:CaseIDs'].tolist()[0]
+            patient_data.loc[patient_data[self.case_id].isin(Other_cases), pattern_name] = len(collected_indexes)
+
             # add a new row to DT_Case_Pattern for each pattern instance
-            for instance in collected_indexes:
-                for ind in range(len(collected_indexes[instance])):
-                    # pattern_instance = {self.case_id: case,
-                    #                     'act': nx.get_node_attributes(self.Trace_graph, 'value').values().mapping[
-                    #                         collected_indexes[instance][ind]], 'instance': instance}
-                    pattern_instance = {self.case_id: case,
-                                        'act': nx.get_node_attributes(self.Trace_graph, 'value')[
-                                            collected_indexes[instance][ind]], 'instance': instance}
-                    # event_features = nx.get_node_attributes(
-                    #     self.Trace_graph, 'event_data').values().mapping[collected_indexes[instance][ind]]
+            for Ocase in Other_cases:
+                Trace_graph = EventLog_graphs[Ocase].copy()
+                for instance in collected_indexes:
+                    for ind in range(len(collected_indexes[instance])):
+                        # pattern_instance = {self.case_id: case,
+                        #                     'act': nx.get_node_attributes(Trace_graph, 'value').values().mapping[
+                        #                         collected_indexes[instance][ind]], 'instance': instance}
+                        pattern_instance = {self.case_id: case,
+                                            'act': nx.get_node_attributes(Trace_graph, 'value')[
+                                                collected_indexes[instance][ind]], 'instance': instance}
+                        # event_features = nx.get_node_attributes(
+                        #     Trace_graph, 'event_data').values().mapping[collected_indexes[instance][ind]]
 
-                    event_features = nx.get_node_attributes(
-                        self.Trace_graph, 'event_data')[collected_indexes[instance][ind]]
-                    for id, feature in enumerate(event_features):
-                        pattern_instance["col%s" % id] = feature
+                        event_features = nx.get_node_attributes(
+                            Trace_graph, 'event_data')[collected_indexes[instance][ind]]
+                        for id, feature in enumerate(event_features):
+                            pattern_instance["col%s" % id] = feature
 
-                    dtime_total = 0
-                    for idx in range(collected_indexes[instance][0], collected_indexes[instance][ind]):
-                        try:
-                            # dtime_total += nx.get_edge_attributes(self.Trace_graph, 'dtime').values().mapping[
-                            #                                 (idx, idx + 1)]
-                            dtime_total += nx.get_edge_attributes(self.Trace_graph, 'dtime')[
-                                (idx, idx + 1)]
-                        except:
-                            continue
+                        dtime_total = 0
+                        for idx in range(collected_indexes[instance][0], collected_indexes[instance][ind]):
+                            try:
+                                # dtime_total += nx.get_edge_attributes(Trace_graph, 'dtime').values().mapping[
+                                #                                 (idx, idx + 1)]
+                                dtime_total += nx.get_edge_attributes(Trace_graph, 'dtime')[
+                                    (idx, idx + 1)]
+                            except:
+                                continue
 
-                    pattern_instance['dtime'] = dtime_total / 60
+                        pattern_instance['dtime'] = dtime_total / 60
 
-                    new_row = pd.DataFrame(pattern_instance, index=[0])
-                    DT_Case_Pattern = pd.concat([DT_Case_Pattern, new_row], ignore_index=True)
+                        new_row = pd.DataFrame(pattern_instance, index=[0])
+                        DT_Case_Pattern = pd.concat([DT_Case_Pattern, new_row], ignore_index=True)
 
         # DT_Case_Pattern.drop(['dtime'], axis=1, inplace=True)
         return patient_data, DT_Case_Pattern
@@ -404,7 +412,7 @@ class Alignment_Checker:
 
     def pattern_annotation(self, patient_data, DT_Case_Pattern, pattern_name, feature='dependent',model='decision_tree'):
         if feature == 'dependent':
-            X = DT_Case_Pattern.drop(columns=[self.case_id, self.outcome,self.likelihood])
+            X = DT_Case_Pattern.drop(columns=[self.case_id, self.outcome, self.likelihood])
             y = DT_Case_Pattern[self.outcome]
             # remove irrelevant features to pattern is all values are the same
             X = X.loc[:, (X != X.iloc[0]).any()]
@@ -468,11 +476,11 @@ class Alignment_Checker:
                     return patient_data, None, None, None
 
             if len(X.columns) > 1:
-                minimum_case_per_feature = 0
+                minimum_case_per_feature = 2
                 if len(X) >= minimum_case_per_feature * len(X.columns):
                     # Identify numerical and categorical columns
                     numerical_features = X.select_dtypes(include=['int64', 'float64']).columns
-                    categorical_features = X.select_dtypes(include=['object']).columns
+                    categorical_features = X.select_dtypes(include=['object', 'string']).columns
 
 
                     # One-hot encode the categorical features
@@ -587,12 +595,19 @@ class Alignment_Checker:
             raise ValueError('Unknown outcome type (binary or numerical)')
 
         # Feature selection
-        selector = SelectFromModel(initial_tree, prefit=True, threshold="mean")
-        X_train_selected = selector.transform(X_train)
+        # selector = SelectFromModel(initial_tree, prefit=True, threshold="mean")
+        # X_train_selected = selector.transform(X_train)
         # X_test_selected = selector.transform(X_test)
+        # Recursive Feature Elimination with Cross-Validation
+        rfecv = RFECV(estimator=initial_tree, step=0.2, cv=3,
+                      scoring='accuracy' if self.outcome_type == 'binary' else 'neg_mean_squared_error')
+        rfecv.fit(X_train, y_train)
+        X_train_selected = rfecv.transform(X_train)
+
+        feature_names = [X.columns[i] for i in range(X.shape[1]) if rfecv.support_[i]]
 
         # Train the decision tree on selected features
-        feature_names = [X.columns[i] for i in selector.get_support(indices=True)]
+        # feature_names = [X.columns[i] for i in selector.get_support(indices=True)]
         if self.outcome_type == 'binary':
             final_tree = DecisionTreeClassifier(max_depth=len(feature_names)+1,
                                                 min_samples_split=0.2, random_state=42, ccp_alpha=0.05)

@@ -65,21 +65,8 @@ def similarity_measuring_patterns(patterns_data, patient_data, pair_cases, start
         in_pattern_cases = patient_data[patient_data[pattern] > 0].index
         out_pattern_cases = patient_data[patient_data[pattern] == 0].index
         # in_pattern_pair_cases = [(a, b) for idx, a in enumerate(in_pattern_cases) for b in in_pattern_cases[idx + 1:]]
-        in_out_pattern_pair_cases = []
-        for a in in_pattern_cases:
-            for b in out_pattern_cases:
-                if a < b:
-                    in_out_pattern_pair_cases.append((a, b))
-                else:
-                    in_out_pattern_pair_cases.append((b, a))
 
-        selected_pair_index = []
-        for item in in_out_pattern_pair_cases:
-            selected_pair_index.append(pair_cases.index(item, start_search_points[item[0]]))
-
-        # if there is no pair of cases with and without the pattern, the case distance must be the highest possible
-        # as this patterns is not discriminative
-        if len(selected_pair_index) == 0:
+        if len(in_pattern_cases) == 0 or len(out_pattern_cases) == 0:
             patterns_data.loc[patterns_data['patterns'] == pattern, 'Case_Distance_Interest'] = 1
             if pattern != org_pattern:
                 patterns_data.loc[patterns_data['patterns'] == org_pattern, 'Case_Distance_Interest'] = 1
@@ -88,12 +75,52 @@ def similarity_measuring_patterns(patterns_data, patient_data, pair_cases, start
             done_patterns.append(pattern)
             continue
 
+
+        in_out_pattern_pair_cases = []
+        min_distance = 10000000
+        for a in in_pattern_cases:
+            for b in out_pattern_cases:
+                if a < b:
+                    in_out_pattern_pair_cases.append((a, b))
+                    paired_index = pair_cases.index((a, b), start_search_points[a])
+                else:
+                    in_out_pattern_pair_cases.append((b, a))
+                    paired_index = pair_cases.index((b, a), start_search_points[b])
+
+                if pairwise_distances_array[paired_index] < min_distance:
+                    min_distance = pairwise_distances_array[paired_index]
+
+                if min_distance == 0:
+                    break
+
+        # for a in in_pattern_cases:
+        #     for b in out_pattern_cases:
+        #         if a < b:
+        #             in_out_pattern_pair_cases.append((a, b))
+        #         else:
+        #             in_out_pattern_pair_cases.append((b, a))
+        #
+        # selected_pair_index = []
+        # for item in in_out_pattern_pair_cases:
+        #     selected_pair_index.append(pair_cases.index(item, start_search_points[item[0]]))
+        #
+        # # if there is no pair of cases with and without the pattern, the case distance must be the highest possible
+        # # as this patterns is not discriminative
+        # if len(selected_pair_index) == 0:
+        #     patterns_data.loc[patterns_data['patterns'] == pattern, 'Case_Distance_Interest'] = 1
+        #     if pattern != org_pattern:
+        #         patterns_data.loc[patterns_data['patterns'] == org_pattern, 'Case_Distance_Interest'] = 1
+        #         done_patterns.append(org_pattern)
+        #
+        #     done_patterns.append(pattern)
+        #     continue
+
         # avg_distance = np.mean([pairwise_distances_array[ind] for ind in selected_pair_index])
-        avg_distance = np.min([pairwise_distances_array[ind] for ind in selected_pair_index])
-        patterns_data.loc[patterns_data['patterns'] == pattern, 'Case_Distance_Interest'] = avg_distance
+        # min_distance = np.min([pairwise_distances_array[ind] for ind in selected_pair_index])
+        patterns_data.loc[patterns_data['patterns'] == pattern, 'Case_Distance_Interest'] = min_distance
 
         if pattern != org_pattern:
-            patterns_data.loc[patterns_data['patterns'] == org_pattern, 'Case_Distance_Interest'] = avg_distance
+            patterns_data.loc[patterns_data['patterns'] == org_pattern, 'Case_Distance_Interest'] = min_distance
             done_patterns.append(org_pattern)
 
         done_patterns.append(pattern)
@@ -225,7 +252,7 @@ def create_pattern_attributes(patient_data, label_class, factual_outcome, patter
     # # # similarity measures
     patterns_data = similarity_measuring_patterns(patterns_data, patient_data, pair_cases, start_search_points,
                                                       pairwise_distances_array, interest_dimension)
-    print('filter based on similarity measures done')
+    print('similarity measures done')
     # # # #
 
 

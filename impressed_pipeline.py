@@ -179,13 +179,13 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                 extension_style = 'Pareto'
                 model = 'DT'
                 pattern_extension_strategy = 'activities'  # 'activities', 'attributes'
-                aggregation_style = 'all'  # 'all', 'none', 'pareto', 'mix
+                aggregation_style = 'mix'  # 'all', 'none', 'pareto', 'mix
                 frequency_type = 'relative'  # 'absolute', 'relative'
                 distance_style = 'all'                # 'case' or 'all'
                 data_dependency = 'dependent'
                 time_start = datetime.now()
                 trace_encoding =  CONF['feature_selection']
-                only_event_attributes = False
+                only_event_attributes = True
                 train_X, test_X = discovery(discovery_algorithm, synth_log, discovery_path, discovery_type, case_id_col,
                                             activity, timestamp, outcome,
                                             outcome_type, delta_time,
@@ -438,7 +438,7 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
 if __name__ == '__main__':
     dataset_list = {
         #'synthetic_data': [3, 5, 7, 9],
-        'bpic2012_O_ACCEPTED-COMPLETE':[20,25,30,35],
+        'bpic2012_O_ACCEPTED-COMPLETE':[20],
         #'bpic2012_O_CANCELLED-COMPLETE':[20,25,30,35],
         #'bpic2012_O_DECLINED-COMPLETE':[20,25,30,35],
          #'sepsis_cases_1':[13],

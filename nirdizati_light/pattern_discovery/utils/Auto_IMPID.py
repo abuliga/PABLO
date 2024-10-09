@@ -15,7 +15,8 @@ import re
 
 
 class AutoPatternDetection:
-    def __init__(self, EventLog_graphs, Max_extension_step, Max_gap_between_events, test_data_percentage, data,
+    def __init__(self, EventLog_graphs, selected_variants,
+                 Max_extension_step, Max_gap_between_events, test_data_percentage, data,
                  patient_data,
                  case_id, activity, outcome, outcome_type, timestamp,
                  pareto_features, pareto_sense, d_time, color_act_dict,
@@ -24,6 +25,7 @@ class AutoPatternDetection:
                  frequency_type='absolute', distance_style='case', only_event_attributes=False):
 
         self.EventLog_graphs = EventLog_graphs
+        self.selected_variants = selected_variants
         self.frequency_type = frequency_type
         self.Max_extension_step = Max_extension_step
         self.Max_gap_between_events = Max_gap_between_events
@@ -73,30 +75,62 @@ class AutoPatternDetection:
 
         self.Case_attributes_categorical = list((set(self.Case_attributes) -
                                                 set(self.Case_attributes_numerical)) - {self.outcome})
+
+
         self.agg_dict = {}
         self.agg_dict_only_case = {}
+
+        # self.special_attributes = []
+        self.special_attributes = ['timesincemidnight', 'month', 'weekday', 'hour', 'timesincelastevent',
+                                   'timesincecasestart', 'opencases', 'Resource', 'activityduration', 'eventnr']
+
+        self.agg_dict['timesincemidnight'] = ['mean', 'min']
+        self.agg_dict['timesincelastevent'] = ['mean', 'min']
+        self.agg_dict['timesincecasestart'] = ['mean', 'min']
+        self.agg_dict['month'] = lambda x: 1 if x.nunique() == 1 else 0
+        self.agg_dict['weekday'] = lambda x: 1 if x.nunique() == 1 else 0
+        self.agg_dict['hour'] = ['mean', 'min']
+        self.agg_dict['opencases'] = ['mean', 'diff']
+        self.agg_dict['Resource'] = [lambda x: x.mode()[0] if not x.mode().empty else None,
+                                     lambda x: 1 if x.nunique() == 1 else 0,
+                                     lambda x: str(set(x))]
+
+        if 'activityduration' in self.Event_numerical_attributes:
+            self.special_attributes.append('activityduration')
+            self.agg_dict['activityduration'] = ['mean', 'sum']
+
+        if 'eventnr' in self.Event_numerical_attributes:
+            self.special_attributes.append('eventnr')
+            self.agg_dict['eventnr'] = lambda x: abs(x.max() - x.min())  # absolute diff
+
+        self.Event_numerical_attributes = list(set(self.Event_numerical_attributes) - set(self.special_attributes))
+        self.Event_categorical_attributes = list(set(self.Event_categorical_attributes) - set(self.special_attributes))
+
         if only_event_attributes:
             for col in self.Event_numerical_attributes:
-                self.agg_dict[col] = 'sum'
+                self.agg_dict[col] = 'mean'
             for col in self.Event_categorical_attributes:
-                self.agg_dict[col] = lambda x: str(list(x))
+                # set based for categorical attributes
+                self.agg_dict[col] = lambda x: str(set(x))
 
             self.agg_dict[self.outcome] = lambda x: x.mode()[0] if not x.mode().empty else None
             self.agg_dict['likelihood'] = 'mean'
         else:
             for col in self.Event_numerical_attributes:
-                self.agg_dict[col] = 'sum'
+                self.agg_dict[col] = 'mean'
             for col in self.Case_attributes:
                 self.agg_dict[col] = lambda x: x.mode()[0] if not x.mode().empty else None
                 self.agg_dict_only_case[col] = lambda x: x.mode()[0] if not x.mode().empty else None
             for col in self.Event_categorical_attributes:
-                self.agg_dict[col] = lambda x: str(list(x))
+                # set based for categorical attributes
+                self.agg_dict[col] = lambda x: str(set(x))
 
         # aggregation for delta time between events of a pattern
         self.agg_dict['dtime'] = 'sum'
 
         # self.pairwise_distances_array, self.pair_cases, self.start_search_points = None, None, None
-        self.pairwise_distances_array, self.pair_cases, self.start_search_points = self.creat_pairwise_distance(style=distance_style)
+        self.pairwise_distances_array, self.pair_cases, self.start_search_points =\
+            self.creat_pairwise_distance(style=distance_style)
 
     def extract_rules(self, text):
         rule_pattern = re.compile(r'rule_\d+')
@@ -193,7 +227,9 @@ class AutoPatternDetection:
                 if Core_activity in extended_parents:
                     continue
                 extended_parents.append(Core_activity)
-                filtered_cases = self.data.loc[self.data[self.activity] == Core_activity, self.case_id]
+                # filtered_cases = self.data.loc[self.data[self.activity] == Core_activity, self.case_id]
+                filtered_cases = self.selected_variants.loc[
+                    self.selected_variants[self.activity] == Core_activity, self.case_id]
                 filtered_main_data = self.data[self.data[self.case_id].isin(filtered_cases)]
                 new_patterns_for_core = []
                 for case in filtered_main_data[self.case_id].unique():
@@ -214,7 +250,8 @@ class AutoPatternDetection:
                     Pattern = Extended_patterns_at_stage[pattern_name]['pattern']
                     self.patient_data.loc[:, pattern_name] = 0
                     self.patient_data, DT_Case_Pattern = \
-                        Alignment_Check.check_pattern_alignment(self.EventLog_graphs, self.patient_data, Pattern,
+                        Alignment_Check.check_pattern_alignment(self.EventLog_graphs, self.patient_data,
+                                                                self.selected_variants, Pattern,
                                                                 pattern_name)
                     if len(DT_Case_Pattern) == 0:  # in case the pattern is not found in the data
                         continue
@@ -261,7 +298,8 @@ class AutoPatternDetection:
                     Pattern = Extended_patterns_at_stage[pattern_name]['pattern']
                     self.patient_data.loc[:, pattern_name] = 0
                     self.patient_data, DT_Case_Pattern = \
-                        Alignment_Check.check_pattern_alignment(self.EventLog_graphs, self.patient_data, Pattern,
+                        Alignment_Check.check_pattern_alignment(self.EventLog_graphs, self.patient_data,
+                                                                self.selected_variants, Pattern,
                                                                 pattern_name)
                     if len(DT_Case_Pattern) == 0:  # in case the pattern is not found in the data
                         continue
@@ -369,7 +407,8 @@ class AutoPatternDetection:
                 Pattern = All_extended_patterns_dict[pattern_name]['pattern']
                 self.patient_data.loc[:, pattern_name] = 0
                 self.patient_data, DT_Case_Pattern = \
-                    Alignment_Check.check_pattern_alignment(self.EventLog_graphs, self.patient_data, Pattern,
+                    Alignment_Check.check_pattern_alignment(self.EventLog_graphs, self.patient_data,
+                                                            self.selected_variants, Pattern,
                                                             pattern_name)
                 if len(DT_Case_Pattern) == 0:  # in case the pattern is not found in the data
                     continue
@@ -460,6 +499,10 @@ class AutoPatternDetection:
                 pivot_df = DT_Case_Pattern.pivot_table(index=self.case_id, columns='unique_act', values=att,
                                                        fill_value=0)
                 pivot_df.columns = [f"{att}-{act}" for act in pivot_df.columns]
+                # if Aggregated_DT_case_patterns is multi level
+                if isinstance(Aggregated_DT_case_patterns.columns, pd.MultiIndex):
+                    multi_index_pivot_df = pd.MultiIndex.from_product([pivot_df.columns, ['']])
+                    pivot_df.columns = multi_index_pivot_df
                 Aggregated_DT_case_patterns = Aggregated_DT_case_patterns.join(pivot_df, on=self.case_id,
                                                                                how='left').fillna(0)
 
@@ -467,8 +510,18 @@ class AutoPatternDetection:
                 string_df = DT_Case_Pattern.pivot_table(index=self.case_id, columns='unique_act', values=att,
                                                         aggfunc=lambda x: ' '.join(x.dropna()), fill_value='')
                 string_df.columns = [f"{att}-{act}" for act in string_df.columns]
+                if isinstance(Aggregated_DT_case_patterns.columns, pd.MultiIndex):
+                    multi_index_pivot_df = pd.MultiIndex.from_product([string_df.columns, ['']])
+                    string_df.columns = multi_index_pivot_df
                 Aggregated_DT_case_patterns = Aggregated_DT_case_patterns.join(string_df, on=self.case_id,
                                                                                how='left').fillna('')
+
+        if isinstance(Aggregated_DT_case_patterns.columns, pd.MultiIndex):
+            simple_columns = [x[0] + "_" + x[1] for x in Aggregated_DT_case_patterns.columns]
+            Aggregated_DT_case_patterns.columns = simple_columns
+            # rename the columns to have standard name for case id and label
+            Aggregated_DT_case_patterns.rename(columns={self.case_id+"_": self.case_id, "instance_": "instance",
+                                                        self.outcome+"_<lambda>": self.outcome}, inplace=True)
 
         return Aggregated_DT_case_patterns
 
@@ -482,7 +535,7 @@ class AutoPatternDetection:
             Aggregated_DT_case_patterns = DT_Case_Pattern.groupby([self.case_id, 'instance']).agg(
                 self.agg_dict_only_case).reset_index()
 
-            feature_to_aggregate = self.Event_numerical_attributes + self.Event_categorical_attributes
+            feature_to_aggregate = self.Event_numerical_attributes + self.Event_categorical_attributes + self.special_attributes
             Aggregated_DT_case_patterns = self.expanding_event_attributes(DT_Case_Pattern, Aggregated_DT_case_patterns,
                                                                           feature_to_aggregate)
         elif self.aggregation_style == "pareto":
@@ -516,7 +569,7 @@ class AutoPatternDetection:
             # mix aggregated and non-aggregated features
             Aggregated_DT_case_patterns = DT_Case_Pattern.groupby([self.case_id, 'instance']).agg(
                 self.agg_dict).reset_index()
-            feature_to_aggregate = self.Event_numerical_attributes + self.Event_categorical_attributes
+            feature_to_aggregate = self.Event_numerical_attributes + self.Event_categorical_attributes + self.special_attributes
             Aggregated_DT_case_patterns = self.expanding_event_attributes(DT_Case_Pattern, Aggregated_DT_case_patterns,
                                                                           feature_to_aggregate)
 
@@ -567,7 +620,6 @@ class AutoPatternDetection:
             agg_dict[col] = 'mean'
         for col in self.Case_attributes:
             agg_dict[col] = lambda x: x.mode()[0] if not x.mode().empty else None
-
 
         Aggregated_data = self.data.groupby([self.case_id]).agg(agg_dict).reset_index()
 

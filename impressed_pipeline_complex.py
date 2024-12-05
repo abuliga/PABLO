@@ -49,7 +49,7 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
     dataset_confs = DatasetConfs(dataset_name=dataset_name, where_is_the_file=CONF['data'])
 
     logger.debug('LOAD DATA')
-    log = get_log(filepath=CONF['data'])
+    log = get_log(filepath=CONF['data'],dataset_confs=dataset_confs)
 
     if 'sepsis' in dataset_name:
         for trace in log:

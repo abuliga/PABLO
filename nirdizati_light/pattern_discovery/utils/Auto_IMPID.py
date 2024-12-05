@@ -84,13 +84,13 @@ class AutoPatternDetection:
         self.special_attributes = ['timesincemidnight', 'month', 'weekday', 'hour', 'timesincelastevent',
                                    'timesincecasestart', 'opencases', 'Resource', 'activityduration', 'eventnr']
 
-        self.agg_dict['timesincemidnight'] = ['mean', 'min']
-        self.agg_dict['timesincelastevent'] = ['mean', 'min']
-        self.agg_dict['timesincecasestart'] = ['mean', 'min']
+        self.agg_dict['timesincemidnight'] = ['mean']
+        self.agg_dict['timesincelastevent'] = ['mean']
+        self.agg_dict['timesincecasestart'] = ['mean']
         self.agg_dict['month'] = lambda x: 1 if x.nunique() == 1 else 0
         self.agg_dict['weekday'] = lambda x: 1 if x.nunique() == 1 else 0
-        self.agg_dict['hour'] = ['mean', 'min']
-        self.agg_dict['opencases'] = ['mean', 'diff']
+        self.agg_dict['hour'] = ['mean']
+        self.agg_dict['opencases'] = ['mean', lambda x:x.max() - x.min()]
         self.agg_dict['Resource'] = [lambda x: x.mode()[0] if not x.mode().empty else None,
                                      lambda x: 1 if x.nunique() == 1 else 0,
                                      lambda x: str(set(x))]
@@ -523,6 +523,8 @@ class AutoPatternDetection:
             Aggregated_DT_case_patterns.rename(columns={self.case_id+"_": self.case_id, "instance_": "instance",
                                                         self.outcome+"_<lambda>": self.outcome}, inplace=True)
 
+        if 'likelihood' not in Aggregated_DT_case_patterns.columns:
+            Aggregated_DT_case_patterns['likelihood'] = DT_Case_Pattern['likelihood']
         return Aggregated_DT_case_patterns
 
     def feature_aggregation(self, DT_Case_Pattern, foundational_pattern, data_dependent_rules):

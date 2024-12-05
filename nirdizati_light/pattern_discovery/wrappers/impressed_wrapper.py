@@ -92,6 +92,7 @@ def impressed_wrapper(df,output_path,discovery_type,case_id,activity,timestamp,o
     patient_data = patient_data.reset_index(drop=True)
     patient_data.loc[:, list(df[activity].unique())] = 0
     selected_variants = VariantSelection(df, case_id, activity, timestamp)
+    #print(selected_variants)
     for case in selected_variants["case:concept:name"].unique():
         if not log_graph_exist:
             EventLog_graphs[case] = Trace_graph_generator(df, delta_time, case, color_act_dict, case_id,

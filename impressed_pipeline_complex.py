@@ -15,6 +15,8 @@ from nirdizati_light.pattern_discovery.common import discovery
 from nirdizati_light.hyperparameter_optimisation.common import retrieve_best_model, HyperoptTarget
 from nirdizati_light.labeling.common import LabelTypes
 from nirdizati_light.log.common import get_log, import_log_csv
+from sklearn.feature_selection import RFECV
+from sklearn.tree import DecisionTreeClassifier
 from nirdizati_light.predictive_model.common import ClassificationMethods, get_tensor
 from nirdizati_light.predictive_model.predictive_model import PredictiveModel, drop_columns
 import random
@@ -44,13 +46,46 @@ def dict_mean(dict_list):
 def run_simple_pipeline(CONF=None, dataset_name=None):
     random.seed(CONF['seed'])
     np.random.seed(CONF['seed'])
-    # dataset = CONF['data'].rpartition('/')[0].replace('datasets/', '')
-
     dataset_confs = DatasetConfs(dataset_name=dataset_name, where_is_the_file=CONF['data'])
 
     logger.debug('LOAD DATA')
-    log = get_log(filepath=CONF['data'],dataset_confs=dataset_confs)
+    log = get_log(filepath=CONF['data'])
+
+    if 'sepsis' in dataset_name:
+        for trace in log:
+            for event in trace:
+                if 'org:group' in event:
+                    event['Resource'] = event['org:group']
+                    del event['org:group']
+    if 'bpic2012' in dataset_name:
+        for trace in log:
+            trace.attributes['AMOUNTREQ'] = trace.attributes['AMOUNT_REQ']
+            del trace.attributes['AMOUNT_REQ']
+            for event in trace:
+                event['CompleteTimestamp'] = event['Complete Timestamp']
+                del event['Complete Timestamp']
+    if 'BPIC17' in dataset_name:
+        for trace in log:
+            for event in trace:
+                if 'org:resource' in event:
+                    event['Resource'] = event['org:resource']
+                    del event['org:resource']
+                    del event['@@index']
+    if 'BPIC11' in dataset_name:
+        for trace in log:
+            for event in trace:
+                if 'group' in event:
+                    event['Resource'] = event['Producercode']
+                    del event['Producercode']
+    for trace in log:
+        for event in trace:
+            if 'event_nr' in event:
+                event['eventnr'] = event['event_nr']
+                event['opencases'] = event['open_cases']
+                del event['event_nr']
+                del event['open_cases']
     logger.debug('Update EVENT ATTRIBUTES')
+
 
     logger.debug('ENCODE DATA')
     encoder, full_df = get_encoded_df(log=log, CONF=CONF)
@@ -108,6 +143,22 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
         actual = np.array(actual.to_list())
 
     initial_result = evaluate_classifier(actual, predicted, scores)
+    file_path = 'results/pred_model_results.csv'
+    # I want to save the results of the model given the prefix length, encoding, and dataset
+    eval_df = pd.DataFrame([initial_result])
+
+    # Add prefix_length and dataset as columns
+    eval_df['prefix_length'] = prefix_length
+    eval_df['dataset'] = dataset
+
+    # Check if the file already exists to decide if we need to write the header
+    if os.path.exists(file_path):
+        eval_df.to_csv(file_path, mode='a', header=False, index=False)  # Append without header
+    else:
+        eval_df.to_csv(file_path, mode='w', header=True, index=False)
+        #csv file save of initial results
+
+
     model_path = 'results/process_models'
     logger.debug('COMPUTE EXPLANATION')
     if CONF['explanator'] is ExplainerType.DICE_IMPRESSED.value:
@@ -126,7 +177,7 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
         sparsity = 0.5
         proximity = 1.0
         timestamp = [*dataset_confs.timestamp_col.values()][0]
-        neighborhood_size = 75
+        neighborhood_size = 100
         hit_rate = None
         if CONF['feature_selection'] == EncodingType.COMPLEX.value:
             dynamic_cols = list(itertools.chain(
@@ -140,17 +191,9 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
 
         for x in range(len(test_df_correct.iloc[:30, :])):
             query_instance = test_df_correct.iloc[x, :].to_frame().T
-            #query_instance = test_df_correct[test_df_correct['trace_id'] == '997']
-            if query_instance.iloc[0, 0] == '206315':
-                continue
             case_id = query_instance.iloc[0, 0]
             query_instance = query_instance.drop(columns=['trace_id'])
-            if CONF['feature_selection'] == EncodingType.SIMPLE_TRACE.value:
-                output_path = 'results/simple_trace_results_3_objectives/'
-                #output_path = 'results/simple_trace_results_4_objectives/'
-            elif CONF['feature_selection'] == EncodingType.COMPLEX.value:
-                #output_path = 'results/complex_results_3_objectives/'
-                output_path = 'results/complex_results_4_objectives_plausibility_conformance'
+            output_path = 'results'
 
 
             columns = drop_columns(train_df).columns
@@ -208,17 +251,28 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                 aggregation_style = 'mix'  # 'all', 'none', 'pareto', 'mix
                 frequency_type = 'relative'  # 'absolute', 'relative'
                 distance_style = 'all'  # 'case' or 'all'
-                data_dependency = 'dependent'
                 time_start = datetime.now()
                 trace_encoding = CONF['feature_selection']
-                only_event_attributes = False
+
+                if CONF['discovery_method'] == 'independent':
+                    data_dependency = 'independent'
+                    only_event_attributes = False
+                elif CONF['discovery_method'] == 'dependent':
+                    data_dependency = 'dependent'
+                    only_event_attributes = False
+                elif CONF['discovery_method'] == 'dependent_True':
+                    data_dependency = 'dependent'
+                    only_event_attributes = True
+                elif CONF['discovery_method'] == 'independent_complex_index':
+                    data_dependency = 'independent'
+                    only_event_attributes = False
 
                 output_path = output_path + '_' + aggregation_style + '/'
                 if not os.path.exists(output_path):
                     os.makedirs(output_path)
                 # WHEN RUNNING CTEP (dependent) OR CALL (independent) data_dependency, the discovery path should have
                 # an extra argument otherwise it is the same and will throw an error if launchin things in parallel
-                discovery_path = output_path + '%s_discovery_%s_%s_%s_%s' % (
+                discovery_path = output_path + '%s_discovery_%s_%s_%s_%s_complex' % (
                     dataset, impressed_pipeline, CONF['seed'], case_id,data_dependency)
                 train_X, test_X = discovery(discovery_algorithm, synth_log, discovery_path, discovery_type, case_id_col,
                                             activity, timestamp, outcome,
@@ -228,10 +282,6 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                                             model, pattern_extension_strategy, aggregation_style, frequency_type,
                                             distance_style, trace_encoding, only_event_attributes)
 
-                ## THESE ARE THE FOUR DIFFERENT  ENCODINGS
-                data_dependency = data_dependency #FDP/CFP
-                #data_dependency = data_dependency+'_'+str(only_event_attributes) #CTEP
-                #data_dependency = data_dependency+'_'+'complex_index' #CALL
                 test_ids = test_X['Case_ID'].unique()
                 if 'BPIC17' in dataset:
                     synth_log['case:label'].replace({0: 'deviant', 1: 'regular'}, inplace=True)
@@ -241,16 +291,12 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
 
                 #### Update trace attributes
                 synth_log = synth_log.drop(columns=['likelihood'])
-                event_log_pred = pm4py.convert_to_event_log(synth_log)
                 cols = [*dataset_confs.static_cat_cols.values(), *dataset_confs.static_num_cols.values()]
                 to_remove = list(set(list(itertools.chain.from_iterable(cols))))
+                to_remove_with_case_prefix = ['case:' + x for x in to_remove]
+                synth_log = synth_log.rename(columns=dict(zip(to_remove, to_remove_with_case_prefix)))
+                event_log_pred = pm4py.convert_to_event_log(synth_log)
 
-                for i in range(len(event_log_pred)):
-                    for x in to_remove:
-                        event_log_pred[i].attributes.update({x: event_log_pred[i][0][x]
-                                                             })
-                        for j in range(len(event_log_pred[i])):
-                            del event_log_pred[i][j]._dict[x]
                 _, synth_df = get_encoded_df(log=event_log_pred, CONF=CONF, encoder=encoder)
                 encoder.decode(synth_df)
 
@@ -270,7 +316,7 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                 except:
                     print('Not possible to convert to int')
 
-                if data_dependency == 'independent_complex_index':
+                if CONF['discovery_method'] == 'independent_complex_index':
                     synth_df_subset = synth_df.drop(
                         columns=[col for col in synth_df.columns if 'prefix' in col] + ['label'])
                     update_train_X = pd.merge(synth_df_subset, train_X, on='trace_id', how='left')
@@ -279,14 +325,14 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                     update_test_X = pd.merge(synth_df_subset, test_X, on='trace_id', how='left')
                     update_test_X = update_test_X.dropna()
                     update_test_X['label'] = update_test_X['label'].map(int)
-                elif data_dependency in ['dependent','independent']:
+                elif CONF['discovery_method'] in ['dependent','independent']:
                     update_train_X = train_X
                     update_train_X = update_train_X.dropna()
                     update_train_X['label'] = update_train_X['label'].map(int)
                     update_test_X = test_X
                     update_test_X = update_test_X.dropna()
                     update_test_X['label'] = update_test_X['label'].map(int)
-                elif data_dependency == 'dependent_True':
+                elif CONF['discovery_method'] == 'dependent_True':
                     to_remove += ['trace_id']
                     #This takes all the one hot encoded trace attributes
                     filtered_columns = [col for col in synth_df.columns if any(sub in col for sub in to_remove)]
@@ -313,7 +359,27 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                         max_evaluations=DT_CONF['hyperparameter_optimisation_epochs'],
                         target=DT_CONF['hyperparameter_optimisation_target'], seed=DT_CONF['seed']
                     )
-                glass_box_result = evaluate_classifier(update_test_X['label'], glass_box.model.predict(
+
+                if CONF['discovery_method'] == 'independent_complex_index':
+                    rfecv = RFECV(estimator=glass_box.model, step=0.1, cv=5,
+                                  scoring='accuracy')
+
+                    rfecv.fit(drop_columns(update_train_X), update_train_X['label'])
+                    X_train_selected = rfecv.transform(drop_columns(update_train_X))
+                    feature_names = [drop_columns(update_train_X).columns[i] for i in
+                                     range(drop_columns(update_train_X).shape[1]) if rfecv.support_[i]]
+                    final_tree = DecisionTreeClassifier(max_depth=len(feature_names) + 1,
+                                                        min_samples_split=0.2, random_state=CONF['seed'],
+                                                        ccp_alpha=0.05)
+                    final_tree.fit(X_train_selected, update_train_X['label'])
+                    glass_box.model = final_tree
+
+                    glass_box_result = evaluate_classifier(update_test_X['label'], glass_box.model.predict(
+                        np.array(update_test_X[feature_names])),
+                                                           glass_box.model.predict_proba(
+                                                               np.array(update_test_X[feature_names])))
+                else:
+                    glass_box_result = evaluate_classifier(update_test_X['label'], glass_box.model.predict(
                     np.array(drop_columns(update_test_X))),
                     glass_box.model.predict_proba(np.array(drop_columns(update_test_X))))
                 local_fidelity = glass_box_result['accuracy']
@@ -349,6 +415,8 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                 update_impressed_test_df.dropna(inplace=True)
                 print('update_impressed_test_df',update_impressed_test_df.columns)
                 update_impressed_test_df = update_impressed_test_df[(drop_columns(update_test_X).columns)]
+                if data_dependency == 'independent_complex_index':
+                    update_impressed_test_df = update_impressed_test_df[feature_names]
                 global_preds = glass_box.model.predict(update_impressed_test_df)
                 global_probs = glass_box.model.predict_proba(update_impressed_test_df)
                 encoder.encode(test_df)
@@ -357,7 +425,15 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                 real_evaluate_glassbox = evaluate_classifier(actual, global_preds.astype(int), global_probs)
                 global_fidelity = pred_evaluate_glassbox['accuracy'] if pred_evaluate_glassbox['accuracy'] > real_evaluate_glassbox['accuracy'] else real_evaluate_glassbox['accuracy']
 
-                if (local_fidelity > 0.9)  |  (global_fidelity > 0.8):
+                #ff (local_fidelity > 0.9)  |  (global_fidelity > 0.8):
+                if data_dependency == 'independent_complex_index':
+                    viz = dtreeviz.model(glass_box.model,
+                                         update_train_X[feature_names],
+                                         update_train_X['label'],
+                                         feature_names=feature_names,
+                                         class_names=['false', 'true'],
+                                         )
+                else:
                     viz = dtreeviz.model(glass_box.model,
                                          drop_columns(update_train_X),
                                          update_train_X['label'],
@@ -365,12 +441,12 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
                                          class_names=['false', 'true'],
 
                                          )
-                    v = viz.view(orientation="LR", scale=2, label_fontsize=5.5)
-                    v.save(
-                        output_path + 'decision_trees' + '/' + '%s_impressed_encoding_%s_%s_%s' % (
-                            dataset, case_id, CONF['prefix_length'],data_dependency+'_complex_index') + '.svg')
+                v = viz.view(orientation="LR", scale=2, label_fontsize=5.5)
+                v.save(
+                    output_path + 'decision_trees' + '/' + '%s_impressed_encoding_%s_%s_%s' % (
+                        dataset, case_id, CONF['prefix_length'],data_dependency+'_complex_index') + '.svg')
 
-                shutil.rmtree(discovery_path)
+                #shutil.rmtree(discovery_path)
 
             logger.info('RESULT')
             logger.info('INITIAL', initial_result)
@@ -396,7 +472,7 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
             results['aggregation_style'] = aggregation_style
             results['frequency_type'] = frequency_type
             results['distance_style'] = distance_style
-            results['data_dependency'] = data_dependency
+            results['data_dependency'] = CONF['discovery_method']
             try:
                 results['number_of_patterns'] = impressed_test_df.shape[1]
                 results['extension_style'] = extension_style
@@ -435,28 +511,27 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
 
 if __name__ == '__main__':
     dataset_list = {
-        # 'synthetic_data': [3, 5, 7, 9],
-        #'BPIC11_f1':[10,15,20,25],
-        #'BPIC11_f2':[10,15,20,25],
-        #'sepsis_cases_4':[16],
-        #'BPIC11_f3':[10,15,20,25],
-        #'BPIC11_f4':[10,15,20,25],
-         #'bpic2012_O_ACCEPTED-COMPLETE': [20,25,30,35],
-         #'bpic2012_O_CANCELLED-COMPLETE':[20,25,30,35],
-         #'bpic2012_O_DECLINED-COMPLETE':[20,25,30,35],
-        #'sepsis_cases_1':[7,9,13,16],
-         #'sepsis_cases_2':[7,9,13,16],
-         #'sepsis_cases_4':[7,9,13,16],
-        'BPIC17_O_ACCEPTED':[15,20,25,30],
+        'BPIC11_f1':[10,15,20,25],
+        'BPIC11_f2':[10,15,20,25],
+        'BPIC11_f3':[10,15,20,25],
+        'BPIC11_f4':[10,15,20,25],
+         'bpic2012_O_ACCEPTED-COMPLETE': [20,25,30,35],
+          'bpic2012_O_CANCELLED-COMPLETE':[20,25,30,35],
+         'bpic2012_O_DECLINED-COMPLETE':[20,25,30,35],
+        'sepsis_cases_1':[7,9,13,16],
+        'sepsis_cases_2':[7,9,13,16],
+        'sepsis_cases_4':[7,9,13,16],
+       'BPIC17_O_ACCEPTED':[15,20,25,30],
          'BPIC17_O_CANCELLED':[15,20,25,30],
-         'BPIC17_O_REFUSED':[15,20,25,30],
+        'BPIC17_O_REFUSED':[15,20,25,30],
         "Production": [7, 11, 15, 19]
 
     }
     pipelines = [True]
+    methods = ['independent','independent_complex_index','dependent','dependent_True']
     for dataset, prefix_lengths in dataset_list.items():
         for prefix_length in prefix_lengths:
-            for pipeline in pipelines:
+            for method in methods:
                 if 'bpic2012' in dataset:
                     seed = 48
                 elif 'sepsis' in dataset:
@@ -465,7 +540,7 @@ if __name__ == '__main__':
                     seed = 48
                 print(os.path.join('datasets', dataset, 'full.xes'))
                 CONF = {
-                    'data': os.path.join('datasets', dataset, 'full.csv'),
+                    'data': os.path.join('datasets', dataset, 'full.xes'),
                     'train_val_test_split': [0.7, 0.15, 0.15],
                     'output': os.path.join('..', 'output_data'),
                     'prefix_length_strategy': PrefixLengthStrategy.FIXED.value,
@@ -486,6 +561,7 @@ if __name__ == '__main__':
                     'target_event': None,
                     'seed': seed,
                     'impressed_pipeline': True,
+                    'discovery_method':method
                 }
 
                 run_simple_pipeline(CONF=CONF, dataset_name=dataset)

@@ -47,7 +47,7 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
     dataset_confs = DatasetConfs(dataset_name=dataset, where_is_the_file=CONF['data'])
 
     logger.debug('LOAD DATA')
-    log = get_log(filepath=CONF['data'], dataset_confs=dataset_confs)
+    log = get_log(filepath=CONF['data'])
     logger.debug('Update EVENT ATTRIBUTES')
 
     logger.debug('ENCODE DATA')
@@ -477,7 +477,7 @@ if __name__ == '__main__':
                     'top_k': 10,
                     'hyperparameter_optimisation': True,  # TODO, this parameter is not used
                     'hyperparameter_optimisation_target': HyperoptTarget.AUC.value,
-                    'hyperparameter_optimisation_epochs': 20,
+                    'hyperparameter_optimisation_epochs': 1,
                     'time_encoding': TimeEncodingType.NONE.value,
                     'target_event': None,
                     'seed': seed,

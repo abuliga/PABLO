@@ -11,10 +11,11 @@ import pickle
 import numpy as np
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 from sklearn.model_selection import train_test_split
-from sklearn.feature_selection import SelectFromModel, RFECV
+from sklearn.feature_selection import RFECV
 from sklearn.tree import export_text
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from xgboost import XGBClassifier, XGBRegressor
+from nirdizati_light.pattern_discovery.utils.IMIPD import VariantSelection
 
 class Alignment_Checker:
     def __init__(self, case_id, outcome, outcome_type='binary'):
@@ -412,7 +413,14 @@ class Alignment_Checker:
 
     def pattern_annotation(self, patient_data, DT_Case_Pattern, pattern_name, feature='dependent',model='decision_tree'):
         if feature == 'dependent':
-            X = DT_Case_Pattern.drop(columns=[self.case_id, self.outcome, self.likelihood])
+            # Find all columns that contain the substring 'likelihood'
+            columns_to_drop = [col for col in DT_Case_Pattern.columns if 'likelihood' in col]
+
+            # Add case_id and outcome to the list of columns to drop
+            columns_to_drop.extend([self.case_id, self.outcome])
+
+            # Drop the specified columns
+            X = DT_Case_Pattern.drop(columns=columns_to_drop)
             y = DT_Case_Pattern[self.outcome]
             # remove irrelevant features to pattern is all values are the same
             X = X.loc[:, (X != X.iloc[0]).any()]
@@ -599,7 +607,7 @@ class Alignment_Checker:
         # X_train_selected = selector.transform(X_train)
         # X_test_selected = selector.transform(X_test)
         # Recursive Feature Elimination with Cross-Validation
-        rfecv = RFECV(estimator=initial_tree, step=0.2, cv=3,
+        rfecv = RFECV(estimator=initial_tree, step=1, cv=3,
                       scoring='accuracy' if self.outcome_type == 'binary' else 'neg_mean_squared_error')
         rfecv.fit(X_train, y_train)
         X_train_selected = rfecv.transform(X_train)
@@ -791,6 +799,7 @@ def alignment_check(log_df,case_id, activity, timestamp, outcome, pattern_folder
             EventLog_graphs[case] = Trace_graph.copy()
         else:
             Trace_graph = EventLog_graphs[case].copy()
+    selected_variants = VariantSelection(df, case_id, activity, timestamp)
 
     # Load the pattern
     Pattern_files = glob.glob(pattern_folder + '/*.pickle')
@@ -803,6 +812,6 @@ def alignment_check(log_df,case_id, activity, timestamp, outcome, pattern_folder
         pattern_name = os.path.basename(pattern).split('.')[0]
         patient_data[pattern_name] = 0
         Pattern = pickle.load(open(pattern, 'rb'))
-        patient_data, _ = Alignment_Check.check_pattern_alignment(EventLog_graphs, patient_data, Pattern, pattern_name)
+        patient_data, _ = Alignment_Check.check_pattern_alignment(EventLog_graphs, patient_data, selected_variants, Pattern, pattern_name)
 
     return patient_data

@@ -23,7 +23,7 @@ def dice_impressed(CONF, predictive_model, cf_df, encoder, query_instance, metho
                    features_to_vary=None, impressed_pipeline=None, dynamic_cols=None, timestamps=None, adapted=None):
     features_names = cf_df.columns.values[:-1]
     feature_selection = CONF['feature_selection']
-    dataset = ''.join(CONF['data'].split('/')[2:3]).replace('.csv', '')
+    dataset = ''.join(CONF['data'].split('/')[1:2]).replace('.xes', '')
     categorical_features,continuous_features,cat_feature_index,cont_feature_index = split_features(cf_df.iloc[:,:-1], encoder)
 
     if CONF['feature_selection'] == 'loreley':

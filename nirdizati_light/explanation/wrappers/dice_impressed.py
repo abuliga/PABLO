@@ -39,12 +39,12 @@ def dice_impressed(CONF, predictive_model, cf_df, encoder, query_instance, metho
                          outcome_name='label')
         m = dice_model(predictive_model, func="ohe-min-max"
                        )
-        dice_query_instance = dice_ml.Dice(d, m, encoder=encoder, method=optimization)
+        dice_query_instance = dice_ml.Dice(d, m, method=optimization)
     else:
         d = dice_ml.Data(dataframe=cf_df, continuous_features=continuous_features,
                          categorical_features=categorical_features, outcome_name='label')
         m = dice_model(predictive_model)
-        dice_query_instance = dice_ml.Dice(d, m, encoder=encoder, method=optimization)
+        dice_query_instance = dice_ml.Dice(d, m, method=optimization)
     time_train = (datetime.now() - time_start).total_seconds()
     model_path = model_path + '/'
 

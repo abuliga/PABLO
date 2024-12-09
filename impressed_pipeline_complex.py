@@ -472,7 +472,14 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
             results['aggregation_style'] = aggregation_style
             results['frequency_type'] = frequency_type
             results['distance_style'] = distance_style
-            results['data_dependency'] = CONF['discovery_method']
+            if CONF['discovery_method'] == 'independent':
+                results['data_dependency'] = 'CFP'
+            elif CONF['discovery_method'] == 'dependent':
+                results['data_dependency'] = 'FCP'
+            elif CONF['discovery_method'] == 'dependent_True':
+                results['data_dependency'] = 'DCP'
+            elif CONF['discovery_method'] == 'independent_complex_index':
+                results['data_dependency'] = 'CALL'
             try:
                 results['number_of_patterns'] = impressed_test_df.shape[1]
                 results['extension_style'] = extension_style
@@ -512,11 +519,11 @@ def run_simple_pipeline(CONF=None, dataset_name=None):
 if __name__ == '__main__':
     dataset_list = {
         'BPIC11_f1':[10,15,20,25],
-        'BPIC11_f2':[10,15,20,25],
+       'BPIC11_f2':[10,15,20,25],
         'BPIC11_f3':[10,15,20,25],
-        'BPIC11_f4':[10,15,20,25],
+       'BPIC11_f4':[10,15,20,25],
          'bpic2012_O_ACCEPTED-COMPLETE': [20,25,30,35],
-          'bpic2012_O_CANCELLED-COMPLETE':[20,25,30,35],
+        'bpic2012_O_CANCELLED-COMPLETE':[20,25,30,35],
          'bpic2012_O_DECLINED-COMPLETE':[20,25,30,35],
         'sepsis_cases_1':[7,9,13,16],
         'sepsis_cases_2':[7,9,13,16],
